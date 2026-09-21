@@ -1,0 +1,52 @@
+# Normalization anchors and SLOs for business scoring (see docs/METRIC_DEFINITIONS.md §7.1).
+#
+# These are BUSINESS THRESHOLDS set by the project owner, not benchmark results.
+# They must be filled in and signed off BEFORE any benchmark result is seen.
+# `null` = not yet decided; the scorer refuses to run while a required anchor is null.
+version: anchors_v1
+status: draft                 # draft | signed_off
+signed_off_by: null
+signed_off_at: null
+
+metrics:
+  # Ratio metrics default to natural bounds unless the owner overrides them.
+  l1.asr.cer:                       {direction: down, best: 0.0, worst: null}
+  l1.intent.macro_f1:               {direction: up,   best: 1.0, worst: 0.0}
+  l1.slot.f1:                       {direction: up,   best: 1.0, worst: 0.0}
+  l1.understanding.accuracy:        {direction: up,   best: 1.0, worst: 0.0}
+  l1.keigo.compliance_rate:         {direction: up,   best: 1.0, worst: 0.0}
+  l1.long_context.recall_accuracy:  {direction: up,   best: 1.0, worst: 0.0}
+
+  l3.task.completion_rate:          {direction: up,   best: 1.0, worst: 0.0}
+  l3.tool.success_rate:             {direction: up,   best: 1.0, worst: 0.0}
+  l3.json.arg_accuracy:             {direction: up,   best: 1.0, worst: 0.0}
+  l3.tool.hallucination_rate:       {direction: down, best: 0.0, worst: 1.0}
+
+  l2.interrupt.latency_ms.p95:      {direction: down, best: null, worst: null}
+  l2.bargein.success_rate:          {direction: up,   best: 1.0,  worst: 0.0}
+  l2.bargein.false_stop_rate:       {direction: down, best: 0.0,  worst: 1.0}
+  l2.ttfa_ms.p95:                   {direction: down, best: null, worst: null}
+
+  l5.cost.per_minute_usd:           {direction: down, best: null, worst: null}
+
+  l4.mos.human:                     {direction: up,   best: 5.0, worst: 1.0}
+  l4.naturalness.human:             {direction: up,   best: 5.0, worst: 1.0}
+  l4.accent.human:                  {direction: up,   best: 5.0, worst: 1.0}
+  l4.emotion.human:                 {direction: up,   best: 5.0, worst: 1.0}
+  l4.pronunciation.cer:             {direction: down, best: 0.0, worst: null}
+  l4.consistency.speaker_sim:       {direction: up,   best: null, worst: null}
+
+slo:
+  ttfa_p95_slo_ms: null           # used by concurrency sweep (l5.concurrency.max_at_slo)
+  interrupt_slo_ms: null          # used by l2.bargein.success_rate
+  underrun_slo: null              # max l2.stream.underrun_rate at a passing concurrency level
+  error_rate_slo: null            # max error rate at a passing concurrency level
+
+gates:
+  ja_rate_gate: null              # min l1.language.ja_rate
+  stability_error_gate: null      # max l2.stability.error_rate
+
+signal:
+  activity_threshold_dbfs: -45    # vad_v1 active-frame threshold (config default, recorded per run)
+  stop_silence_ms: null           # silence needed to declare generation stopped
+  interrupt_timeout_ms: null      # barge-in counted as failure after this
