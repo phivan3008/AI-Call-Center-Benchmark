@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+
+# Secrets
+.env
+.env.*
+
+# Benchmark outputs (keep directory skeleton only)
+artifacts/**
+!artifacts/*/
+!artifacts/*/.gitkeep
+bundles/
+
+# Built dataset audio and model caches
+datasets/**/audio/
+hf_cache/
+runtimes/**/.venv/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

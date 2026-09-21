@@ -1,0 +1,177 @@
+"""Preflight environment check (``vbench env check``, DEPLOYMENT_GUIDE §6.2).
+
+Reports facts about the machine; it never prints secret values (only present/missing).
+Role ``server`` treats GPU and API reachability as required; role ``dev`` downgrades
+them to warnings so the command is also usable on the developer machine.
+"""
+
+from __future__ import annotations
+
+import ctypes.util
+import os
+import platform
+import shutil
+import sys
+import tempfile
+import urllib.error
+import urllib.request
+from collections.abc import Callable, Mapping
+from enum import StrEnum
+from pathlib import Path
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+from benchmark.core.clock import Clock, SystemClock
+from benchmark.core.config import Settings
+from benchmark.core.provenance import capture_env, git_state
+from benchmark.core.schemas import EnvInfo
+
+Role = Literal["server", "dev"]
+
+NETWORK_TARGETS = {
+    "huggingface": "https://huggingface.co/api/models?limit=1",
+    "openai": "https://api.openai.com/v1/models",
+}
+TOOLS = ("uv", "git", "ffmpeg", "zstd", "nvidia-smi")
+
+
+class CheckStatus(StrEnum):
+    PASS = "pass"
+    WARN = "warn"
+    FAIL = "fail"
+
+
+class CheckResult(BaseModel):
+    name: str
+    status: CheckStatus
+    detail: str
+    required: bool
+
+
+class EnvReport(BaseModel):
+    role: Role
+    generated_at: str
+    git_commit: str
+    git_dirty: bool
+    vbench_home: str
+    environment: EnvInfo
+    disk_free_gb: float
+    disk_total_gb: float
+    memory_total_gb: float | None
+    cpu_count: int
+    checks: list[CheckResult] = Field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return all(c.status is not CheckStatus.FAIL for c in self.checks)
+
+
+Probe = Callable[[str], tuple[bool, str]]
+
+
+def http_probe(url: str, timeout_s: float = 5.0) -> tuple[bool, str]:
+    """Reachable means an HTTP response of any status (401 without a key is fine)."""
+    request = urllib.request.Request(url, method="GET", headers={"User-Agent": "vbench-envcheck"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_s) as response:
+            return True, f"HTTP {response.status}"
+    except urllib.error.HTTPError as exc:
+        return True, f"HTTP {exc.code}"
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return False, f"unreachable: {exc}"
+
+
+def memory_total_gb() -> float | None:
+    meminfo = Path("/proc/meminfo")
+    if meminfo.is_file():
+        for line in meminfo.read_text().splitlines():
+            if line.startswith("MemTotal:"):
+                return round(int(line.split()[1]) / 1024 / 1024, 1)
+    return None
+
+
+def _check(name: str, ok: bool, detail: str, required: bool) -> CheckResult:
+    status = CheckStatus.PASS if ok else CheckStatus.FAIL if required else CheckStatus.WARN
+    return CheckResult(name=name, status=status, detail=detail, required=required)
+
+
+def run_env_check(
+    settings: Settings,
+    role: Role = "server",
+    env: Mapping[str, str] | None = None,
+    probe: Probe = http_probe,
+    which: Callable[[str], str | None] = shutil.which,
+    clock: Clock | None = None,
+) -> EnvReport:
+    env = os.environ if env is None else env
+    clock = clock or SystemClock()
+    server = role == "server"
+    info = capture_env()
+    commit, dirty = git_state(settings.repo_root)
+
+    settings.home.mkdir(parents=True, exist_ok=True)
+    usage = shutil.disk_usage(settings.home)
+    checks: list[CheckResult] = []
+
+    checks.append(
+        _check(
+            "python_version",
+            sys.version_info >= (3, 11),
+            platform.python_version(),
+            required=True,
+        )
+    )
+    checks.append(
+        _check(
+            "gpu",
+            bool(info.gpus),
+            ", ".join(f"{g.name} ({g.memory_total_mb} MiB)" for g in info.gpus)
+            or "no NVIDIA GPU visible via NVML",
+            required=server,
+        )
+    )
+    checks.append(
+        _check(
+            "nvidia_driver",
+            info.driver_version is not None,
+            f"driver={info.driver_version}, cuda_driver={info.cuda_driver_version}",
+            required=server,
+        )
+    )
+    try:
+        with tempfile.NamedTemporaryFile(dir=settings.home):
+            writable = True
+    except OSError:
+        writable = False
+    checks.append(_check("home_writable", writable, str(settings.home), required=True))
+
+    for tool in TOOLS:
+        path = which(tool)
+        required = server and tool in {"uv", "git", "nvidia-smi"}
+        checks.append(_check(f"tool:{tool}", path is not None, path or "not found", required))
+
+    sndfile = ctypes.util.find_library("sndfile")
+    checks.append(_check("lib:sndfile", sndfile is not None, sndfile or "not found", False))
+
+    for name, url in NETWORK_TARGETS.items():
+        reachable, detail = probe(url)
+        checks.append(_check(f"network:{name}", reachable, detail, required=server))
+
+    for var, required in (("OPENAI_API_KEY", server), ("HF_TOKEN", False)):
+        present = bool(env.get(var))
+        checks.append(_check(f"env:{var}", present, "present" if present else "missing", required))
+
+    return EnvReport(
+        role=role,
+        generated_at=clock.utc_now().isoformat(),
+        git_commit=commit,
+        git_dirty=dirty,
+        vbench_home=str(settings.home),
+        environment=info,
+        disk_free_gb=round(usage.free / 1024**3, 1),
+        disk_total_gb=round(usage.total / 1024**3, 1),
+        memory_total_gb=memory_total_gb(),
+        cpu_count=os.cpu_count() or 0,
+        checks=checks,
+    )

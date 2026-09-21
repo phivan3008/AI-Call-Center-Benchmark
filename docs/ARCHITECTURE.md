@@ -445,7 +445,7 @@ artifacts/
   dashboards/<report_id>/index.html
 ```
 
-`vbench bundle <run_id>` produces `<run_id>.tar.zst` (raw events + processed metrics + logs, optionally audio) with `SHA256SUMS`. `vbench bundle verify` validates it on Env A before any analysis.
+`vbench bundle create <run_id>` produces `<run_id>.tar.zst` (raw events + processed metrics + logs, optionally audio) with `SHA256SUMS`. `vbench bundle verify` validates it on Env A before any analysis.
 
 ---
 
@@ -522,7 +522,7 @@ vbench model serve   --model <id>        # start runtime, wait for health
 vbench model evict   --model <id>        # free disk
 vbench run    --model <id> --profile smoke|standard|full [--layers L1,L3] [--resume <run_id>]
 vbench evaluate <run_id> [--evaluators gpu|cpu|all]
-vbench bundle <run_id> / vbench bundle verify <file>
+vbench bundle create <run_id> / vbench bundle verify <file>
 vbench aggregate <run_id>...             # CPU, Env A friendly
 vbench report   <report_id>
 vbench leaderboard --runs <run_id>... [--scoring business_v1]

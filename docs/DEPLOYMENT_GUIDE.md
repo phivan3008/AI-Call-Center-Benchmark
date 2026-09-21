@@ -69,7 +69,7 @@ VBENCH_LOG_LEVEL=INFO
 Security notes:
 
 - Keys are read from the environment only. The framework never writes key values to logs, manifests, or bundles; `env check` reports only "present / missing".
-- Before returning a bundle, `vbench bundle` scans it for strings matching configured secret patterns and refuses to create it if any are found.
+- Before returning a bundle, `vbench bundle create` scans it for strings matching configured secret patterns and refuses to create it if any are found.
 
 ---
 
@@ -82,7 +82,7 @@ Procedure for each model:
 1. `vbench env check` — shows free space and the measured size of the next model (once known).
 2. `vbench model prepare --model <id>` — refuses to start if free space < measured size + `disk_safety_margin_gb` (config).
 3. Run the benchmark.
-4. `vbench bundle <run_id>` — archive results first.
+4. `vbench bundle create <run_id>` — archive results first.
 5. `vbench model evict --model <id>` — removes weights from `hf_cache` and the model's venv; keeps artifacts.
 
 Raw audio artifacts can be large; the `full` profile stores output audio as FLAC and the bundle step can exclude audio (`--no-audio`) when only metrics and timelines need to be returned. Layer 4 (voice quality) needs output audio, so L4 bundles always include it.
@@ -101,14 +101,16 @@ git log -1 --oneline          # confirm the commit named in the checkpoint instr
 uv sync                       # harness environment (not model venvs)
 ```
 
-### 6.2 Preflight (available from Phase 1)
+### 6.2 Preflight and mock round trip (available from Phase 1)
 
 ```bash
 set -a; source $VBENCH_HOME/.env; set +a
 uv run vbench env check --output $VBENCH_HOME/bundles/env_report.json
+uv run vbench run --model mock --profile mock_smoke      # CPU-only pipeline check, prints RUN_ID
+uv run vbench bundle create <RUN_ID>
 ```
 
-Stop and report back if the check fails.
+`env check` exits non-zero if a required check fails. Stop and report back in that case. Mock runs are `is_mock=true` and can never be ranked.
 
 ### 6.3 Per-model run (available from Phase 2)
 
@@ -119,7 +121,7 @@ uv run vbench model prepare --model $MODEL
 uv run vbench model serve   --model $MODEL        # starts vLLM/official server + gateway, waits for health
 uv run vbench run --model $MODEL --profile smoke  # prints RUN_ID
 uv run vbench evaluate $RUN_ID --evaluators gpu   # stops the model server first, then loads evaluator models
-uv run vbench bundle $RUN_ID
+uv run vbench bundle create $RUN_ID
 uv run vbench model evict --model $MODEL          # only when done with this model
 ```
 

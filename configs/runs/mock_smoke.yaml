@@ -1,0 +1,12 @@
+# Pipeline dry run with the mock adapter (CPU only). Produces is_mock=true runs that can
+# never be ranked. Used by tests and to validate the server setup before real models.
+name: mock_smoke
+description: Mock adapter end-to-end check of collect -> manifest -> bundle.
+layers: [L1, L3]
+samples_per_layer: 3
+repeats: 1
+seed: 1234
+sample_timeout_s: 10
+frame_ms: 20
+input_sample_rate_hz: 16000
+mock_only: true

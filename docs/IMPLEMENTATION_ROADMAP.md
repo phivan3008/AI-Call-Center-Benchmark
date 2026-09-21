@@ -93,9 +93,13 @@ Phases 4–8 can be reordered after Phase 3 if priorities change; each depends o
 - Tests: schema round-trips, provenance capture, artifact checksums, mock run produces valid manifest + events, leaderboard builder rejects `is_mock` runs.
 - **⏸ HITL checkpoint 1:** operator runs
   ```bash
-  uv sync && uv run vbench env check --output env_report.json
+  set -a; source $VBENCH_HOME/.env; set +a
+  uv sync
+  uv run vbench env check --output $VBENCH_HOME/bundles/env_report.json
+  uv run vbench run --model mock --profile mock_smoke            # prints RUN_ID
+  uv run vbench bundle create <RUN_ID>
   ```
-  and returns `env_report.json`. Claude uses it to finalize the per-model venv layout, vLLM/CUDA compatibility, and disk plan.
+  and returns `env_report.json` plus the mock bundle (`<RUN_ID>.tar.zst` + `.SHA256SUMS`), which proves the collect -> bundle -> verify round trip works on the server. Claude uses it to finalize the per-model venv layout, vLLM/CUDA compatibility, and disk plan.
 - Exit: CI green, env report received and reviewed.
 
 ### Phase 2 — Model Gateway & First Adapters
@@ -114,7 +118,7 @@ Phases 4–8 can be reordered after Phase 3 if priorities change; each depends o
   uv run vbench model serve   --model qwen3-omni-30b-a3b-fp8
   uv run vbench run --model qwen3-omni-30b-a3b-fp8 --profile smoke
   uv run vbench run --model gpt-realtime --profile smoke
-  uv run vbench bundle <run_id>   # for each run
+  uv run vbench bundle create <run_id>   # for each run
   ```
   Return: bundles + measured disk usage of weights and venvs.
 - Exit: both models complete smoke run; capability report reviewed.
