@@ -9,6 +9,7 @@ commit, so runs stay traceable and rankable without a ``.git`` directory.
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 import subprocess
 import zipfile
@@ -42,7 +43,6 @@ class BuildInfo(BaseModel):
     release_name: str
     commit: str
     tag: str | None = None
-    dirty: bool = False
     built_at: datetime
     files: dict[str, str]
 
@@ -72,38 +72,52 @@ def build_release(
     version: str,
     built_at: datetime,
     tag: str | None = None,
-    allow_dirty: bool = False,
 ) -> Path:
-    """Zip the tracked files at HEAD with ``BUILD_INFO.json``; write a ``.sha256`` sidecar.
+    """Package the committed tree at HEAD as ``<name>.zip`` + ``<name>.zip.sha256``.
 
-    Refuses a dirty working tree (unless ``allow_dirty``) so that the package content always
-    equals the recorded commit.
+    Content comes from git objects (``git archive``), not the working tree, so the package
+    is byte-identical to the commit regardless of local line-ending conversion. A dirty
+    working tree is refused so nobody assumes uncommitted edits were shipped.
     """
     commit = _git(repo_root, "rev-parse", "HEAD").strip()
-    dirty = bool(_git(repo_root, "status", "--porcelain", "--untracked-files=no").strip())
-    if dirty and not allow_dirty:
+    if _git(repo_root, "status", "--porcelain", "--untracked-files=no").strip():
         raise ReleaseError("working tree has uncommitted changes; commit them first")
-    paths = [p for p in _git(repo_root, "ls-files", "-z").split("\0") if p]
 
     release_name = f"{PACKAGE_NAME}-{version}-{commit[:8]}"
-    files = {p: sha256_file(repo_root / p) for p in sorted(paths) if (repo_root / p).is_file()}
+    out_dir.mkdir(parents=True, exist_ok=True)
+    archive = out_dir / f"{release_name}.zip"
+    archive.unlink(missing_ok=True)
+    # autocrlf=false: Git for Windows would otherwise convert LF to CRLF inside the archive.
+    _git(
+        repo_root,
+        "-c",
+        "core.autocrlf=false",
+        "archive",
+        "--format=zip",
+        f"--prefix={release_name}/",
+        f"--output={archive.resolve()}",
+        "HEAD",
+    )
+
+    prefix = f"{release_name}/"
+    files: dict[str, str] = {}
+    with zipfile.ZipFile(archive) as zf:
+        for entry in zf.infolist():
+            if not entry.is_dir():
+                files[entry.filename.removeprefix(prefix)] = hashlib.sha256(
+                    zf.read(entry)
+                ).hexdigest()
     info = BuildInfo(
         package=PACKAGE_NAME,
         version=version,
         release_name=release_name,
         commit=commit,
         tag=tag,
-        dirty=dirty,
         built_at=built_at,
-        files=files,
+        files=dict(sorted(files.items())),
     )
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-    archive = out_dir / f"{release_name}.zip"
-    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for rel in files:
-            zf.write(repo_root / rel, arcname=f"{release_name}/{rel}")
-        zf.writestr(f"{release_name}/{BUILD_INFO}", info.model_dump_json(indent=2) + "\n")
+    with zipfile.ZipFile(archive, "a", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"{prefix}{BUILD_INFO}", info.model_dump_json(indent=2) + "\n")
     digest = sha256_file(archive)
     atomic_write_text(out_dir / f"{archive.name}.sha256", f"{digest}  {archive.name}\n")
     return archive

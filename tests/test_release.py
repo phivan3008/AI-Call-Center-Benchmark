@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import shutil
 import subprocess
 import zipfile
@@ -62,7 +63,6 @@ def test_build_extract_verify_roundtrip(repo: Path, tmp_path: Path) -> None:
     assert info.release_name == archive.name.removesuffix(".zip")
     assert info.version == "0.1.1"
     assert info.tag == "t"
-    assert info.dirty is False
     assert set(info.files) == {"README.md", "benchmark/mod.py", "configs/a.yaml"}
 
     state = verify_release(extracted)
@@ -100,17 +100,23 @@ def test_crlf_conversion_is_detected(repo: Path, tmp_path: Path) -> None:
     assert verify_release(extracted).problems == ["modified file: benchmark/mod.py"]
 
 
-def test_dirty_tree_refused_unless_allowed(repo: Path, tmp_path: Path) -> None:
-    (repo / "benchmark" / "mod.py").write_text("X = 3\n", encoding="utf-8")
+def test_dirty_tree_refused(repo: Path, tmp_path: Path) -> None:
+    (repo / "benchmark" / "mod.py").write_bytes(b"X = 3\n")
     with pytest.raises(ReleaseError, match="uncommitted"):
         build_release(repo, tmp_path / "dist", version="0.1.1", built_at=BUILT_AT)
-    archive = build_release(
-        repo, tmp_path / "dist", version="0.1.1", built_at=BUILT_AT, allow_dirty=True
-    )
-    extracted = _extract(archive, tmp_path / "server")
-    state = source_state(extracted)
-    assert state.kind == "release"
-    assert state.dirty is True  # recorded as dirty even though files match BUILD_INFO
+
+
+def test_package_content_comes_from_commit_not_working_tree(repo: Path, tmp_path: Path) -> None:
+    # Untracked files never ship, even though they sit in the working tree.
+    (repo / "benchmark" / "scratch.py").write_bytes(b"untracked\n")
+    archive = build_release(repo, tmp_path / "dist", version="0.1.1", built_at=BUILT_AT)
+    with zipfile.ZipFile(archive) as zf:
+        names = zf.namelist()
+    assert not any(n.endswith("scratch.py") for n in names)
+    assert any(n.endswith(BUILD_INFO) for n in names)
+    info = load_build_info(_extract(archive, tmp_path / "server"))
+    assert info is not None
+    assert info.files["benchmark/mod.py"] == hashlib.sha256(b"X = 1\n").hexdigest()
 
 
 def test_archive_digest_mismatch_and_missing_sidecar(repo: Path, tmp_path: Path) -> None:

@@ -158,11 +158,8 @@ def bundle_verify(
 def release_build(
     out: Annotated[Path, typer.Option(help="Output directory.")] = Path("dist"),
     tag: Annotated[str | None, typer.Option(help="Git tag this release belongs to.")] = None,
-    allow_dirty: Annotated[
-        bool, typer.Option("--allow-dirty", help="Package uncommitted changes (marked dirty).")
-    ] = False,
 ) -> None:
-    """Build <name>.zip + <name>.zip.sha256 from the tracked files at HEAD."""
+    """Build <name>.zip + <name>.zip.sha256 from the committed tree at HEAD."""
     settings = _settings()
     try:
         archive = build_release(
@@ -171,7 +168,6 @@ def release_build(
             version=__version__,
             built_at=datetime.now(UTC),
             tag=tag,
-            allow_dirty=allow_dirty,
         )
     except ReleaseError as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)

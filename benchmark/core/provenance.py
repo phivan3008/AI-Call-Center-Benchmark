@@ -128,7 +128,7 @@ def source_state(repo_root: Path) -> SourceState:
     return SourceState(
         kind="release",
         commit=info.commit,
-        dirty=info.dirty or not state.ok,
+        dirty=not state.ok,
         release_name=info.release_name,
         problems=state.problems,
     )
