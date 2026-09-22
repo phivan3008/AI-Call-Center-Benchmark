@@ -36,10 +36,11 @@ Trách nhiệm:
 Máy trung chuyển (máy công ty)
 Khả năng:
 - Truy cập GitHub
-- Upload source code lên GPU server
+- Copy/paste mọi loại file và thư mục lên GPU server và từ GPU server về
 Trách nhiệm:
-- Tải repository về
-- Upload repository lên benchmark server
+- Tải gói release (.zip + .zip.sha256) từ GitHub Releases
+- Copy gói release lên benchmark server
+- Copy bundle kết quả từ server về và gửi cho Claude
 ---
 ## Môi trường C
 GPU Benchmark Server
@@ -48,8 +49,9 @@ Cấu hình:
 - 1x H100 80GB
 - SSD 200GB
 - Không có Docker (model chạy bằng vLLM trong `uv` venv riêng cho từng model)
-- Tải model trực tiếp từ Hugging Face được
-- Gọi OpenAI API được
+- KHÔNG kết nối được GitHub; code chỉ đến server bằng cách copy file từ máy công ty
+- Tải được từ PyPI và Hugging Face, gọi được OpenAI API
+- Không có `.git`: truy vết code bằng BUILD_INFO.json trong gói release (`vbench release verify`)
 Trách nhiệm:
 - Chạy workload benchmark
 - Thu thập metric thô
@@ -64,13 +66,13 @@ Claude không bao giờ bịa kết quả benchmark.
 Claude không bao giờ ước lượng kết quả benchmark khi không có bằng chứng.
 Khi cần chạy benchmark:
 1. Sinh code.
-2. Merge vào `main` và push lên GitHub (người dùng chỉ lấy code bằng cách tải từ GitHub về máy công ty).
+2. Merge vào `main`, tạo tag `vX.Y.Z`, push, và chờ workflow Release đăng gói `.zip` lên GitHub Releases (người dùng tải gói trên máy công ty rồi copy lên GPU server).
 3. Dừng lại.
 4. Yêu cầu người dùng chạy benchmark.
 5. Chờ đầu ra benchmark.
 6. Phân tích đầu ra.
 7. Cải thiện framework.
-Mỗi lần cần người dùng kiểm thử thực tế trên máy công ty hoặc GPU server, Claude phải đưa source code và mọi thành phần cần review lên GitHub trước, và ghi rõ commit cần dùng.
+Mỗi lần cần người dùng kiểm thử thực tế trên máy công ty hoặc GPU server, Claude phải đưa source code và mọi thành phần cần review lên GitHub trước, phát hành gói release, và ghi rõ tên release + tên file zip cần dùng.
 Đầu vào benchmark được chấp nhận:
 - csv
 - json
@@ -255,6 +257,6 @@ Nếu benchmark cần tài nguyên GPU:
 Sinh code.
 Sinh lệnh.
 Sinh hướng dẫn triển khai.
-Merge vào `main` và push lên GitHub.
+Merge vào `main`, tạo tag, push, xác nhận gói release đã được đăng.
 DỪNG LẠI.
 Chờ kết quả benchmark từ người dùng.

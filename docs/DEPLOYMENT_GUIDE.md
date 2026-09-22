@@ -2,61 +2,90 @@
 
 | Trường | Giá trị |
 |---|---|
-| Trạng thái | **ĐÃ DUYỆT** (2026-09-22) |
-| Phiên bản | 0.1.0 |
-| Ngày | 2026-09-21 |
+| Trạng thái | **ĐÃ DUYỆT** (2026-09-22), cập nhật v0.2.0 cho bối cảnh không có GitHub trên server |
+| Phiên bản | 0.2.0 |
+| Ngày | 2026-09-22 |
 | Đối tượng | Người vận hành chạy benchmark trên Env C (Linux, 1x H100 80GB, SSD 200GB) |
 
-> Bản tiếng Việt. Các lệnh giữ nguyên, copy chạy trực tiếp được. Các lệnh ở đây là CLI **dự kiến** (ARCHITECTURE §13); mỗi mục ghi rõ phase bắt đầu có lệnh đó. Trước phase đó, chỉ các lệnh của những phase đã bàn giao mới chạy được.
+> Bản tiếng Việt. Các lệnh giữ nguyên, copy chạy trực tiếp được. Mỗi mục ghi rõ phase bắt đầu có lệnh đó; trước phase đó chỉ các lệnh của những phase đã bàn giao mới chạy được.
 
 ---
 
-## 1. Thông tin server (từ review, 2026-09-21)
+## 1. Bối cảnh vận hành
 
 | Mục | Giá trị |
 |---|---|
+| GitHub | **GPU server không kết nối được GitHub.** Code chỉ đến server bằng cách copy file từ máy công ty. |
+| Máy công ty (Env B) | Truy cập được GitHub; copy/paste được mọi loại file và thư mục lên server và từ server về. |
+| Internet trên server | Tải được từ PyPI (thư viện Python), Hugging Face (model) và gọi được OpenAI API. Chỉ không truy cập được GitHub. |
 | Docker | **Không có.** Model chạy như process cục bộ trong `uv` venv riêng cho từng model. |
 | Engine phục vụ model | Mặc định vLLM; dự phòng bằng code inference chính thức (có tài liệu) cho từng model. |
-| Hugging Face | Truy cập trực tiếp được từ server. |
-| OpenAI API | Truy cập trực tiếp được từ server (baseline GPT-Realtime chạy ở đây). |
+
+### 1.1 Luồng đi của code và kết quả
+
+```text
+Claude (máy dev) --push + tag--> GitHub --tạo Release--> [file .zip + .zip.sha256]
+                                                               |
+                               máy công ty tải 2 file từ trang GitHub Releases
+                                                               |
+                                               copy 2 file lên GPU server
+                                                               |
+            GPU server: kiểm tra sha256 -> giải nén -> vbench release verify -> chạy benchmark
+                                                               |
+                          bundle kết quả (.tar.zst + .SHA256SUMS) copy về máy công ty
+                                                               |
+                                       gửi cho Claude để phân tích
+```
+
+**Vì sao dùng gói release thay vì copy thư mục repo:** server không có `.git`, nên framework không tự biết code đang chạy là commit nào. Gói release (`.zip`) chứa file `BUILD_INFO.json` ghi commit và SHA-256 của từng file. Lệnh `vbench release verify` dùng file này để chứng minh code trên server giống hệt commit đó. Mọi run đều ghi lại tên release và commit, nên kết quả vẫn truy vết được và được xếp hạng. Nếu code bị sửa, thiếu file, hoặc bị đổi ký tự xuống dòng khi copy qua Windows, lệnh verify sẽ phát hiện, và run bị đánh dấu `dirty` (không được xếp hạng).
+
+**Luôn copy nguyên file `.zip`**, không giải nén trên máy công ty rồi copy thư mục. Copy thư mục qua Windows có thể đổi ký tự xuống dòng (LF → CRLF) hoặc bỏ sót file.
 
 ---
 
-## 2. Yêu cầu cài đặt (một lần)
+## 2. Yêu cầu cài đặt trên server (một lần)
 
 | Yêu cầu | Lệnh kiểm tra | Ghi chú |
 |---|---|---|
-| NVIDIA driver + CUDA tương thích với vLLM/torch đã chốt | `nvidia-smi` | Phiên bản tối thiểu chính xác được chốt ở Phase 1 từ output của `vbench env check`. |
-| `uv` | `uv --version` | Tự cài Python 3.11+ cho từng venv; không cần sửa Python của hệ thống. Cài: `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| `git` | `git --version` | |
-| `ffmpeg` | `ffmpeg -version` | Chuyển đổi audio, mô phỏng kênh điện thoại. |
-| `libsndfile` | `ldconfig -p \| grep sndfile` | Đọc/ghi FLAC. |
-| `zstd` | `zstd --version` | Nén bundle kết quả (tuỳ chọn; bundle do Python tạo, `zstd` chỉ để giải nén thủ công). |
-| Dung lượng đĩa trống | `df -h $VBENCH_HOME` | Xem §5 về quản lý dung lượng đĩa. |
+| NVIDIA driver + CUDA tương thích với vLLM/torch đã chốt | `nvidia-smi` | Phiên bản tối thiểu chính xác được chốt sau checkpoint 1 từ output của `vbench env check`. |
+| `uv` | `uv --version` | Cài: `curl -LsSf https://astral.sh/uv/install.sh \| sh` (hoặc `pip install uv`). `uv` tự cài Python 3.11+ cho từng venv. |
+| `python3` hoặc `unzip` | `python3 --version` | Để giải nén gói release (`python3 -m zipfile -e ...`). |
+| `sha256sum` | `sha256sum --version` | Kiểm tra file `.zip` sau khi copy (có sẵn trên Linux). |
+| `ffmpeg` | `ffmpeg -version` | Chuyển đổi audio, mô phỏng kênh điện thoại (cần từ Phase 3). |
+| `libsndfile` | `ldconfig -p \| grep sndfile` | Đọc/ghi FLAC (cần từ Phase 3). |
+| Dung lượng đĩa trống | `df -h $VBENCH_HOME` | Xem §5. |
 
-Bản thân framework không cần quyền root, ngoài việc cài các gói hệ thống ở trên.
+Server **không cần** `git`. Bản thân framework không cần quyền root, ngoài việc cài các gói hệ thống ở trên.
 
 ---
 
 ## 3. Cấu trúc thư mục trên server
 
-Chọn một thư mục gốc trên SSD benchmark và đặt vào biến `VBENCH_HOME`. **Mọi** đường dẫn đều suy ra từ thư mục này; không có đường dẫn nào bị hardcode.
+Chọn một thư mục gốc trên SSD benchmark, gọi là `VBENCH_HOME`. Mọi đường dẫn đều suy ra từ thư mục này; không có đường dẫn nào bị hardcode.
 
 ```text
 $VBENCH_HOME/
-  repo/                         # this git repository (uploaded from Env B)
+  .env                          # biến môi trường (xem §4), chmod 600
+  releases/
+    ai-callcenter-benchmark-0.1.1-448a82fa.zip          # gói release đã copy lên
+    ai-callcenter-benchmark-0.1.1-448a82fa.zip.sha256
+    ai-callcenter-benchmark-0.1.1-448a82fa/             # thư mục code đã giải nén
   hf_cache/                     # HF_HOME: model weights
   runtimes/<model>/.venv        # one uv venv per model (created by `vbench model prepare`)
-  datasets_audio/               # built dataset audio (git-ignored)
-  artifacts/                    # raw / processed / reports / dashboards
-  bundles/                      # result archives to return
+  datasets_audio/               # built dataset audio
+  artifacts/                    # raw / processed / reports / dashboards (kết quả run)
+  bundles/                      # file kết quả để copy về
 ```
+
+Mỗi release giải nén vào một thư mục riêng; không ghi đè lên release cũ. Kết quả run nằm trong `$VBENCH_HOME/artifacts/`, **bên ngoài** thư mục code, nên xoá hay thay release không làm mất kết quả. `vbench env check` báo `fail` (`home_outside_repo`) nếu `VBENCH_HOME` trỏ vào chính thư mục code.
+
+Có thể xoá thư mục release cũ khi không còn cần (chỉ xoá thư mục trong `releases/`, không xoá `artifacts/` hay `bundles/`).
 
 ---
 
 ## 4. Biến môi trường
 
-Tạo file `$VBENCH_HOME/.env` (không bao giờ commit file này; đặt quyền `chmod 600`):
+Tạo file `$VBENCH_HOME/.env` một lần (không bao giờ đưa file này vào repo; đặt quyền `chmod 600`):
 
 ```bash
 VBENCH_HOME=/path/to/benchmark_ssd/vbench
@@ -93,20 +122,37 @@ Artifact audio thô có thể lớn. Profile `full` lưu audio đầu ra dạng 
 
 ## 6. Quy trình vận hành chuẩn
 
-### 6.1 Cập nhật code (mỗi checkpoint)
+### 6.1 Đưa code mới lên server (mỗi checkpoint)
 
-Trước mỗi checkpoint, Claude đã merge code vào nhánh `main` trên GitHub và ghi rõ commit cần dùng.
+Mỗi hướng dẫn checkpoint của Claude ghi rõ **tên release** (ví dụ `v0.1.1`) và **tên file** (ví dụ `ai-callcenter-benchmark-0.1.1-448a82fa.zip`).
 
-Trên Env B (máy công ty): tải repo từ GitHub (`git clone` lần đầu, `git pull` các lần sau, nhánh `main`), rồi upload thư mục repo lên `$VBENCH_HOME/repo/` trên server. Trên server:
+**Trên máy công ty:**
+
+1. Mở trang Releases của repo trên GitHub: `https://github.com/phivan3008/AI-Call-Center-Benchmark/releases`.
+2. Mở release được nêu trong hướng dẫn (ví dụ `v0.1.1`), tải **cả hai** file trong mục Assets:
+   - `ai-callcenter-benchmark-<phiên bản>-<commit>.zip`
+   - `ai-callcenter-benchmark-<phiên bản>-<commit>.zip.sha256`
+3. Copy nguyên hai file (không giải nén) lên server, vào thư mục `$VBENCH_HOME/releases/`.
+
+**Trên GPU server:**
 
 ```bash
-set -a; source /path/to/benchmark_ssd/vbench/.env; set +a   # nạp VBENCH_HOME, OPENAI_API_KEY, ...
-cd $VBENCH_HOME/repo
-git log -1 --oneline          # confirm the commit named in the checkpoint instructions
-uv sync                       # harness environment (not model venvs)
+export VBENCH_HOME=/path/to/benchmark_ssd/vbench         # đường dẫn thật, giống trong .env
+set -a; source $VBENCH_HOME/.env; set +a                  # nạp biến môi trường
+
+REL=ai-callcenter-benchmark-0.1.1-448a82fa               # tên file trong hướng dẫn checkpoint, bỏ đuôi .zip
+cd $VBENCH_HOME/releases
+sha256sum -c $REL.zip.sha256                              # phải in ra: <tên file>.zip: OK
+python3 -m zipfile -e $REL.zip .                          # hoặc: unzip -q $REL.zip
+cd $VBENCH_HOME/releases/$REL
+
+uv sync                                                   # cài thư viện của harness (tải từ PyPI)
+uv run vbench release verify                              # phải in ra "ok": true
 ```
 
-Nếu repo được upload dưới dạng thư mục không có `.git`, lệnh `git log` sẽ lỗi; khi đó hãy báo lại commit đã tải về. Lưu ý: run tạo ra từ thư mục không có `.git` sẽ bị ghi `git_commit=unknown`, `git_dirty=true` và không được xếp hạng (chỉ chấp nhận với `--allow-dirty`). Vì vậy nên upload cả thư mục `.git`.
+Nếu `sha256sum -c` báo `FAILED` hoặc `release verify` báo `"ok": false`: file bị hỏng hoặc sai khi copy. Copy lại hai file từ máy công ty và làm lại. Nếu vẫn lỗi, gửi output về cho Claude.
+
+Mọi lệnh ở các mục sau đều chạy **từ thư mục release** (`$VBENCH_HOME/releases/$REL`), trong terminal đã nạp `.env`.
 
 ### 6.2 Preflight và mock round trip (có từ Phase 1)
 
@@ -116,9 +162,24 @@ uv run vbench run --model mock --profile mock_smoke      # CPU-only pipeline che
 uv run vbench bundle create <RUN_ID>
 ```
 
+Thay `<RUN_ID>` bằng giá trị in ra ở dòng `RUN_ID=...` của lệnh trước.
+
 `env check` thoát với mã khác 0 nếu một mục bắt buộc bị fail. Khi đó hãy dừng lại và gửi kết quả về. Ý nghĩa các trạng thái: `pass` = đạt, `warn` = cảnh báo (không bắt buộc), `fail` = không đạt mục bắt buộc. Run mock có `is_mock=true` và không bao giờ được xếp hạng.
 
-Với `--role server` (mặc định), các mục bắt buộc gồm: Python ≥ 3.11, GPU + NVIDIA driver, quyền ghi vào `VBENCH_HOME`, `uv`, `git`, `nvidia-smi`, kết nối đến Hugging Face và OpenAI, và có `OPENAI_API_KEY`. `ffmpeg`, `zstd`, `libsndfile`, `HF_TOKEN` chỉ là cảnh báo.
+Với `--role server` (mặc định), các mục bắt buộc gồm:
+
+| Mục | Ý nghĩa |
+|---|---|
+| `python_version` | Python ≥ 3.11 |
+| `gpu`, `nvidia_driver` | Thấy GPU NVIDIA và driver qua NVML |
+| `home_writable` | Ghi được vào `VBENCH_HOME` |
+| `home_outside_repo` | `VBENCH_HOME` nằm ngoài thư mục code |
+| `source_integrity` | Code khớp đúng một commit (release đã verify, hoặc git checkout sạch) |
+| `tool:uv`, `tool:nvidia-smi` | Có các công cụ này |
+| `network:huggingface`, `network:openai`, `network:pypi` | Kết nối ra ngoài được |
+| `env:OPENAI_API_KEY` | Có API key (không in giá trị) |
+
+`ffmpeg`, `zstd`, `git`, `libsndfile`, `HF_TOKEN` chỉ là cảnh báo.
 
 ### 6.3 Chạy cho từng model (có từ Phase 2)
 
@@ -147,21 +208,30 @@ Mẫu đã hoàn thành được bỏ qua; mẫu lỗi được thử lại mộ
 
 Mỗi thời điểm chỉ một workload GPU: `vbench` giữ một file khoá (`$VBENCH_HOME/.gpu.lock`) khi model server hoặc evaluator GPU đang chạy. Job GPU khác chạy trên server trong lúc benchmark sẽ làm kết quả độ trễ và hạ tầng mất giá trị — NVML sampler ghi lại process lạ và run bị gắn cờ `gpu_contended=true`.
 
+### 6.6 Không sửa code trên server
+
+Không sửa file trong thư mục release trên server. Mọi thay đổi code phải đi qua Claude → GitHub → release mới. Nếu sửa tại chỗ, `release verify` báo `modified file`, run bị đánh dấu `dirty` và không được xếp hạng. Cấu hình riêng của server (đường dẫn, key) chỉ đặt trong `$VBENCH_HOME/.env`.
+
 ---
 
 ## 7. Gửi kết quả về
 
-Gửi cho Claude (qua máy trung chuyển hoặc đính kèm):
+**Trên GPU server**, các file cần gửi nằm trong `$VBENCH_HOME/bundles/`:
 
-| Nội dung | Vị trí |
+| Nội dung | File |
 |---|---|
-| Bundle kết quả | `$VBENCH_HOME/bundles/<run_id>.tar.zst` + `<run_id>.SHA256SUMS` |
-| Env report (khi được yêu cầu) | `$VBENCH_HOME/bundles/env_report.json` |
-| Khi lỗi: log | có sẵn trong bundle (`logs/run.jsonl`); nếu chính bước đóng gói bị lỗi, gửi `artifacts/raw/<run_id>/logs/` và output terminal |
+| Bundle kết quả | `<run_id>.tar.zst` + `<run_id>.SHA256SUMS` (luôn gửi cả hai) |
+| Env report (khi được yêu cầu) | `env_report.json` |
+| Khi lỗi: log | có sẵn trong bundle (`logs/run.jsonl`); nếu chính bước đóng gói bị lỗi, gửi thư mục `$VBENCH_HOME/artifacts/raw/<run_id>/logs/` và output terminal |
 
-Cũng chấp nhận: báo cáo CSV/JSON/parquet/HTML, ảnh chụp màn hình, output profiler. Claude kiểm tra checksum trước (`vbench bundle verify`) và chỉ phân tích dữ liệu đã được kiểm tra.
+**Chuyển về:** copy các file trên từ server về máy công ty (cùng cách copy lên), rồi gửi cho Claude bằng một trong hai cách:
 
-Luôn gửi cả hai file `.tar.zst` và `.SHA256SUMS` của cùng một run; thiếu file `.SHA256SUMS` thì bundle không được chấp nhận.
+- đặt vào thư mục `incoming/` trong repo trên máy dev (thư mục này nằm trong `.gitignore`, không bị commit), rồi báo đường dẫn; hoặc
+- đính kèm trực tiếp vào cuộc hội thoại.
+
+Không giải nén hay sửa file bundle trước khi gửi. Claude kiểm tra checksum trước (`vbench bundle verify`) và chỉ phân tích dữ liệu đã được kiểm tra. Thiếu file `.SHA256SUMS` thì bundle không được chấp nhận.
+
+Cũng chấp nhận: báo cáo CSV/JSON/parquet/HTML, ảnh chụp màn hình, output profiler, output terminal.
 
 ---
 
@@ -169,10 +239,16 @@ Luôn gửi cả hai file `.tar.zst` và `.SHA256SUMS` của cùng một run; th
 
 | Triệu chứng | Bước đầu tiên |
 |---|---|
-| Health check của `model serve` bị timeout | Xem `artifacts/raw/<run_id>/logs/runtime_<model>.log`; gửi file đó về. |
+| `sha256sum -c` báo `FAILED` | File `.zip` bị hỏng khi tải hoặc copy. Tải lại cả hai file từ GitHub Releases trên máy công ty và copy lại. |
+| `sha256sum: ... no properly formatted checksum lines found` | File `.sha256` bị đổi định dạng khi copy (ví dụ thêm CRLF). Chạy `sed -i 's/\r$//' $REL.zip.sha256` rồi kiểm tra lại. |
+| `release verify` báo `modified file` / `missing file` / `unexpected file` | Code trên server khác với release. Xoá thư mục `$VBENCH_HOME/releases/$REL`, giải nén lại từ file `.zip` (không copy thư mục từ Windows). |
+| `env check` báo `fail` ở `source_integrity` | Đang chạy từ thư mục không phải release đã giải nén, hoặc code đã bị sửa. Làm lại §6.1. |
+| `env check` báo `fail` ở `home_outside_repo` | Chưa nạp `.env` hoặc `VBENCH_HOME` trỏ vào thư mục code. Kiểm tra §4 và chạy lại `set -a; source $VBENCH_HOME/.env; set +a`. |
+| `env check` báo `fail` ở `env:OPENAI_API_KEY` | Chưa nạp file `.env` trong terminal hiện tại: chạy lại `set -a; source $VBENCH_HOME/.env; set +a`. |
+| `uv sync` lỗi mạng | Kiểm tra kết nối PyPI (`curl -I https://pypi.org/simple/`); gửi output về. |
+| `vbench: command not found` | Dùng `uv run vbench ...` (không gọi `vbench` trực tiếp) và chạy `uv sync` trong thư mục release trước. |
+| Health check của `model serve` bị timeout | Xem `$VBENCH_HOME/artifacts/raw/<run_id>/logs/runtime_<model>.log`; gửi file đó về. |
 | CUDA OOM khi nạp model | Kiểm tra không có process GPU nào khác (`nvidia-smi`); gửi `env_report.json` và log runtime. |
-| vLLM từ chối kiến trúc model | Có thể xảy ra với một số model; khi đó `runtime.engine` trong YAML của model phải là `official`. Gửi log để sửa runtime. |
-| Lỗi kết nối OpenAI | Kiểm tra `OPENAI_API_KEY` đã có và HTTPS ra ngoài hoạt động; `vbench env check` hiển thị khả năng kết nối. |
-| `env check` báo `fail` ở `env:OPENAI_API_KEY` | Chưa nạp file `.env`: chạy lại `set -a; source $VBENCH_HOME/.env; set +a` trong cùng terminal. |
-| `vbench: command not found` | Dùng `uv run vbench ...` (không gọi `vbench` trực tiếp) và chạy `uv sync` trong thư mục repo trước. |
+| vLLM từ chối kiến trúc model | Có thể xảy ra với một số model; khi đó `runtime.engine` trong YAML của model phải là `official`. Gửi log để Claude sửa runtime. |
+| Lỗi kết nối OpenAI | Kiểm tra `OPENAI_API_KEY` và HTTPS ra ngoài; `vbench env check` hiển thị khả năng kết nối. |
 | `bundle create` báo "secret-like strings found" | Có file trong run chứa chuỗi giống API key. Không gửi file đó; gửi danh sách file bị báo để Claude kiểm tra. |

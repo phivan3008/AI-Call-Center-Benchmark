@@ -36,7 +36,7 @@ uv run vbench bundle create <RUN_ID>                   # đóng gói kết quả
 uv run vbench bundle verify bundles/<RUN_ID>.tar.zst   # kiểm tra bundle
 ```
 
-Trên GPU server, làm theo [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md).
+Trên GPU server (không kết nối GitHub): tải gói release `.zip` + `.zip.sha256` từ trang [Releases](https://github.com/phivan3008/AI-Call-Center-Benchmark/releases) trên máy công ty, copy lên server, rồi làm theo [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) §6.
 
 Trạng thái hiện tại: Phase 1 (khung cốt lõi, mock adapter) đã xong; đang chờ checkpoint 1 trên GPU server. Các model thật được thêm từ Phase 2.
 
@@ -163,6 +163,7 @@ Không cho phép điểm ước lượng.
 │   ├── scoring/         # điều kiện xếp hạng, chấm điểm
 │   ├── runner.py        # thu thập dữ liệu (turn mode)
 │   ├── bundle.py        # đóng gói / kiểm tra kết quả
+│   ├── release.py       # gói release offline cho GPU server (BUILD_INFO.json)
 │   ├── envcheck.py      # kiểm tra môi trường
 │   └── cli.py           # lệnh vbench
 │   (các lớp layer1..layer5 được thêm từ Phase 3)
@@ -195,17 +196,17 @@ Không cho phép điểm ước lượng.
 ## Bước 1
 Claude Code sinh source code.
 ## Bước 2
-Source code được commit, merge vào `main` và push lên GitHub.
+Source code được commit, merge vào `main`, gắn tag và push lên GitHub. GitHub Actions tạo gói release offline (`.zip` + `.zip.sha256`) trên trang Releases.
 ## Bước 3
-Repository được tải về máy trung chuyển (máy công ty).
+Gói release được tải về máy trung chuyển (máy công ty).
 ## Bước 4
-Repository được upload lên GPU server.
+Gói release được copy lên GPU server, kiểm tra checksum, giải nén và kiểm tra bằng `vbench release verify` (server không kết nối GitHub).
 ## Bước 5
 Benchmark chạy trên GPU server.
 ## Bước 6
 Thu thập artifact.
 ## Bước 7
-Artifact được gửi lại cho Claude.
+Bundle kết quả được copy từ server về máy công ty rồi gửi lại cho Claude.
 ## Bước 8
 Claude phân tích kết quả và cải thiện framework.
 
@@ -219,11 +220,13 @@ Claude Code
     ↓
 GitHub
 ```
-Máy trung chuyển
+Máy trung chuyển (máy công ty)
 ```text
-GitHub
-    ↓
-GPU Server
+GitHub Releases (.zip + .zip.sha256)
+    ↓  tải về
+Máy công ty
+    ↓  copy file (hai chiều)
+GPU Server (không kết nối GitHub; có PyPI, Hugging Face, OpenAI)
 ```
 GPU Benchmark Server
 ```text

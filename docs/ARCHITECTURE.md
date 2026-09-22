@@ -2,8 +2,8 @@
 
 | Trường | Giá trị |
 |---|---|
-| Trạng thái | **ĐÃ DUYỆT** (2026-09-21). v0.2.0 áp dụng kết quả review: GPU server không có Docker, phục vụ model bằng vLLM trong `uv` venv riêng cho từng model |
-| Phiên bản | 0.2.0 |
+| Trạng thái | **ĐÃ DUYỆT** (2026-09-21). v0.2.0: GPU server không có Docker, phục vụ model bằng vLLM trong `uv` venv riêng cho từng model. v0.3.0 (2026-09-22): GPU server không kết nối GitHub, code được đưa lên bằng gói release offline |
+| Phiên bản | 0.3.0 |
 | Ngày | 2026-09-21 |
 | Phạm vi | Framework benchmark cho các mô hình Speech-to-Speech (S2S) bản địa, bài toán tổng đài tiếng Nhật |
 
@@ -39,6 +39,7 @@
 | C3 | 1x H100 80GB | Benchmark **từng model một**. Không bao giờ có hai model cùng nằm trên GPU (trừ ASR/judge dùng để chấm, được nạp ở một giai đoạn riêng). |
 | C4 | SSD 200GB | Weights của model được tải, benchmark rồi xoá theo từng model. Dataset lưu audio gọn (FLAC mono 16 kHz / 24 kHz). Artifact thô được lọc/nén theo từng run. Kiểm tra dung lượng đĩa là một phần của preflight. |
 | C5 | Các model có thư viện Python xung đột nhau | Mỗi model chạy trong **`uv` virtual environment riêng** (GPU server không có Docker) sau một giao thức mạng thống nhất. Harness không bao giờ import code của model. |
+| C7 | GPU server không kết nối được GitHub; code chỉ đến server bằng cách copy file từ máy công ty (hai chiều copy được mọi loại file); server vẫn truy cập PyPI, Hugging Face, OpenAI | Code được phát hành dưới dạng **gói release offline** (`.zip` + `.zip.sha256`) do GitHub Actions build từ một tag. `BUILD_INFO.json` trong gói ghi commit và SHA-256 từng file, thay cho `.git` làm nguồn truy vết trên server (§9.4). |
 | C6 | Không bịa kết quả / nhãn | Giá trị metric chỉ đến từ các `MetricRecord` do evaluator tính từ artifact thô. Thiếu dữ liệu = `null` kèm lý do, không bao giờ là 0 hay giá trị đoán. Dữ liệu synthetic được gắn cờ. Run mock không bao giờ được đưa vào leaderboard. |
 
 ---
@@ -48,22 +49,24 @@
 ```mermaid
 flowchart LR
     subgraph EnvA[Env A - Developer PC]
-        CC[Claude Code] --> GH[(GitHub repo)]
-        ANA[vbench aggregate / report<br/>CPU only] 
+        CC[Claude Code] --> GH[(GitHub repo + tag)]
+        ANA[vbench bundle verify / aggregate / report<br/>CPU only]
     end
-    subgraph EnvB[Env B - Transfer machine]
-        DL[git clone / pull] --> UP[upload to server]
+    GH --> REL[GitHub Actions: release .zip<br/>+ BUILD_INFO.json + .sha256]
+    subgraph EnvB[Env B - Company PC]
+        DL[download release .zip + .sha256] --> UP[copy files to server]
     end
-    subgraph EnvC[Env C - GPU server, 1x H100]
-        PRE[vbench env check] --> SRV[Model runtime<br/>one model at a time]
+    subgraph EnvC[Env C - GPU server, 1x H100, no GitHub]
+        VER[sha256sum -c<br/>unzip<br/>vbench release verify] --> PRE[vbench env check]
+        PRE --> SRV[Model runtime<br/>one model at a time]
         SRV <--> HAR[Benchmark harness]
         HAR --> RAW[(artifacts/raw)]
         RAW --> EVAL[Evaluators<br/>ASR judge, MOS proxies, NVML]
         EVAL --> BUNDLE[run bundle .tar.zst<br/>+ SHA256SUMS]
     end
-    GH --> DL
-    UP --> PRE
-    BUNDLE -->|human returns bundle| ANA
+    REL --> DL
+    UP --> VER
+    BUNDLE -->|copied back via company PC| ANA
     ANA --> LB[leaderboard.csv/json/html<br/>benchmark_summary.json]
 ```
 
@@ -389,8 +392,10 @@ class RunManifest(BaseModel):
     is_mock: bool                # True => can never be ranked
     started_at: datetime         # UTC
     finished_at: datetime | None
-    git_commit: str
-    git_dirty: bool              # dirty => run is flagged non-reproducible
+    git_commit: str              # commit from git, or from BUILD_INFO.json of a release package
+    git_dirty: bool              # dirty => code differs from that commit; run is non-rankable
+    source_kind: str             # git | release | unknown
+    release_name: str | None     # e.g. ai-callcenter-benchmark-0.1.1-448a82fa
     config_sha256: str           # hash of fully resolved config
     model: ModelVersion          # model_id, repo, revision sha, engine, engine version, runtime uv.lock sha256
     datasets: list[DatasetRef]   # name, version, manifest sha256
@@ -451,6 +456,16 @@ artifacts/
 
 > Ghi chú Phase 1: runner hiện tại lưu audio dạng `.wav`; chuyển sang FLAC khi có module audio ở Phase 3.
 
+### 9.4 Truy vết code trên server không có git (gói release)
+
+GPU server không có `.git`, nên commit của code được lấy từ gói release:
+
+1. Claude merge vào `main`, tạo tag `vX.Y.Z` và push. Workflow `.github/workflows/release.yml` chạy `vbench release build`: đóng gói các file đã commit tại tag bằng `git archive` (không lấy từ thư mục làm việc, nên nội dung giống hệt commit trên mọi hệ điều hành), thêm `BUILD_INFO.json` (package, version, release_name, commit, tag, built_at, SHA-256 từng file), và tạo `<release_name>.zip.sha256`. Workflow giải nén lại gói, chạy `vbench release verify` và toàn bộ test trên bản giải nén, rồi mới đăng lên GitHub Releases.
+2. Trên server: `sha256sum -c` kiểm tra file zip; sau khi giải nén, `vbench release verify` so từng file với `BUILD_INFO.json`: báo thiếu file, file bị sửa (kể cả đổi LF → CRLF), và file lạ trong `benchmark/`, `configs/`, `datasets/`, `scripts/`, `tests/`. File sinh ra khi chạy (`.venv`, `__pycache__`, cache, audio dataset) được bỏ qua.
+3. Khi bắt đầu mỗi run, `source_state()` dùng git nếu có checkout hợp lệ; nếu không thì dùng `BUILD_INFO.json` và kiểm tra lại toàn bộ file. Kết quả ghi vào manifest (`source_kind`, `release_name`, `git_commit`, `git_dirty`); các vấn đề phát hiện được ghi vào `notes`. Run có `git_dirty=true` bị leaderboard từ chối như §10.3.
+
+`BUILD_INFO.json` và `dist/` nằm trong `.gitignore`; chúng chỉ tồn tại trong gói release.
+
 ---
 
 ## 10. Chấm điểm và xếp hạng
@@ -508,11 +523,11 @@ Các điều kiện đạt/không đạt hiển thị cạnh bảng xếp hạng
 |---|---|
 | Cấu hình | Model Pydantic nạp từ YAML; biến môi trường ghi đè (tiền tố `VBENCH_`); secret chỉ lấy từ env; không hardcode đường dẫn (mọi đường dẫn tương đối với `VBENCH_HOME`, mặc định là thư mục gốc repo). |
 | Logging | `structlog` dạng JSON lines ra stdout và `logs/run.jsonl`; mỗi dòng có `run_id`, `model_id`, `layer`, `sample_id`. Không dùng `print`. |
-| Tái lập | Chốt revision model, hash `uv.lock` của từng runtime, chốt phiên bản vLLM, seed cố định, hash cấu hình đã resolve, checksum dataset, sampling tất định khi được hỗ trợ, lặp N lần cho metric có tính ngẫu nhiên. |
+| Tái lập | Code trên server lấy từ gói release có `BUILD_INFO.json` (§9.4), chốt revision model, hash `uv.lock` của từng runtime, chốt phiên bản vLLM, seed cố định, hash cấu hình đã resolve, checksum dataset, sampling tất định khi được hỗ trợ, lặp N lần cho metric có tính ngẫu nhiên. |
 | Chịu lỗi | Checkpoint theo từng mẫu: run bị crash tiếp tục từ mẫu hoàn thành gần nhất (`vbench run --resume <run_id>`). Timeout theo mẫu tạo record `status=error`, không dừng cả run. |
 | Test | pytest, chỉ CPU, adapter `mock` + timeline fixture ghi sẵn; CI yêu cầu độ phủ ≥ 80%. Các nhánh code GPU chỉ được chạy qua smoke run trên server. |
 | CI | GitHub Actions: `ruff`, `mypy --strict` trên `benchmark/`, `pytest --cov`, kiểm tra schema/config, lint manifest dataset. |
-| Bảo mật | Không lưu thông tin xác thực trong repo; `.env` nằm trong git-ignore; preflight chỉ kiểm tra có/không có API key, không ghi giá trị ra log. |
+| Bảo mật | Không lưu thông tin xác thực trong repo hay gói release; `.env` nằm trong git-ignore; preflight chỉ kiểm tra có/không có API key, không ghi giá trị ra log. |
 
 ---
 
@@ -527,6 +542,8 @@ vbench model evict   --model <id>        # free disk
 vbench run    --model <id> --profile smoke|standard|full [--layers L1,L3] [--resume <run_id>]
 vbench evaluate <run_id> [--evaluators gpu|cpu|all]
 vbench bundle create <run_id> / vbench bundle verify <file>
+vbench release build [--out dist] [--tag vX.Y.Z]   # Env A / GitHub Actions
+vbench release verify [--archive <zip>]           # GPU server, after unzip
 vbench aggregate <run_id>...             # CPU, Env A friendly
 vbench report   <report_id>
 vbench leaderboard --runs <run_id>... [--scoring business_v1]
@@ -535,7 +552,7 @@ vbench mos export|serve|import           # human MOS workflow
 
 Script `scripts/run_all.sh` bọc vòng lặp cho từng model (prepare → serve → run → evaluate → bundle → evict), để người vận hành chỉ cần chạy một lệnh cho mỗi model hoặc một lệnh cho tất cả.
 
-Đã có từ Phase 1: `vbench env check`, `vbench run --model mock`, `vbench bundle create`, `vbench bundle verify`, `vbench version`.
+Đã có từ Phase 1: `vbench env check`, `vbench run --model mock`, `vbench bundle create`, `vbench bundle verify`, `vbench release build`, `vbench release verify`, `vbench version`.
 
 ---
 
@@ -549,6 +566,7 @@ Script `scripts/run_all.sh` bọc vòng lặp cho từng model (prepare → serv
 | vLLM không hỗ trợ phần xử lý audio đầu ra của một model | Không phục vụ model đó bằng vLLM được | Phương án dự phòng dùng code inference chính thức có tài liệu; engine được ghi lại và báo cáo |
 | Sai lệch của evaluator (ASR judge, LLM judge, bộ dự đoán MOS yếu với tiếng Nhật) | Điểm bị méo | Mức lỗi nền của judge trên audio tham chiếu, tập con hiệu chỉnh do người gán nhãn, báo cáo độ đồng thuận, MOS người chấm là chính cho L4 |
 | GPT-Realtime đo qua internet còn OSS đo qua localhost | So sánh độ trễ không công bằng | Báo cáo riêng có ghi nhãn; đo RTT; tuỳ chọn giả lập mạng cho OSS |
+| Code bị hỏng hoặc đổi ký tự xuống dòng khi copy qua máy công ty | Chạy code khác với commit mà không biết | Copy nguyên file zip; kiểm tra `sha256sum -c` + `vbench release verify`; run có code lệch bị đánh dấu dirty |
 | Độ trễ vòng lặp có con người tham gia | Lặp chậm | Profile smoke (vài phút) trước profile full; run có thể tiếp tục; log đủ chi tiết để một vòng gửi về là đủ debug |
 | Audio kích thích tổng hợp bằng TTS khác người gọi thật | Kết quả lạc quan | Tập con thu giọng người thật; báo cáo kết quả theo từng nguồn kích thích |
 | License model hạn chế dùng thương mại | Model thắng không triển khai được | Điều kiện license được báo cáo cạnh bảng xếp hạng |
@@ -562,6 +580,7 @@ Script `scripts/run_all.sh` bọc vòng lặp cho từng model (prepare → serv
 - ~~Cô lập runtime~~ — Không có Docker. Model được phục vụ bằng vLLM trong `uv` venv riêng cho từng model (§6.1).
 - ~~Internet trên GPU server~~ — Server tải model trực tiếp từ Hugging Face.
 - ~~Truy cập GPT-Realtime~~ — Server gọi được OpenAI API; baseline chạy từ GPU server.
+- ~~Đưa code lên server~~ (2026-09-22) — Server không kết nối GitHub nhưng tải được từ PyPI/Hugging Face; code đi qua máy công ty dưới dạng gói release offline (C7, §9.4).
 
 Còn mở (trả lời trong Phase 0b và trước Phase 3):
 

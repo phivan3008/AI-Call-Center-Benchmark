@@ -2,10 +2,10 @@
 
 | Trường | Giá trị |
 |---|---|
-| Trạng thái | **ĐÃ DUYỆT** (2026-09-21) |
-| Phiên bản | 0.2.0 |
-| Ngày | 2026-09-21 |
-| Phụ thuộc | `docs/ARCHITECTURE.md` v0.2.0 |
+| Trạng thái | **ĐÃ DUYỆT** (2026-09-21), cập nhật 2026-09-22 cho server không kết nối GitHub |
+| Phiên bản | 0.3.0 |
+| Ngày | 2026-09-22 |
+| Phụ thuộc | `docs/ARCHITECTURE.md` v0.3.0 |
 
 > Bản tiếng Việt. Lệnh, tên file, tên metric và code giữ nguyên tiếng Anh.
 
@@ -19,7 +19,7 @@
 4. **Mỗi checkpoint một vòng gửi qua con người.** Mỗi checkpoint liệt kê chính xác lệnh cần chạy và file cần gửi về. Log đủ chi tiết để debug chỉ từ một bundle.
 5. **Review từng bước.** Mỗi phase kết thúc bằng một lần review; phase sau chỉ bắt đầu khi đã review xong.
 6. **Không có kết quả trong code hay tài liệu cho đến khi đo.** Chỗ chưa có giá trị để `null` / `TBD`, không bao giờ điền con số trông hợp lý.
-7. **Luôn đưa lên GitHub trước mỗi checkpoint.** Trước khi nhờ người dùng chạy bất cứ thứ gì trên máy công ty hoặc GPU server, Claude merge vào `main`, push lên GitHub, và ghi rõ commit cần dùng trong hướng dẫn checkpoint. Người dùng chỉ lấy code bằng cách tải từ GitHub.
+7. **Luôn phát hành gói release trước mỗi checkpoint.** Trước khi nhờ người dùng chạy bất cứ thứ gì trên máy công ty hoặc GPU server, Claude merge vào `main`, tạo tag `vX.Y.Z`, push, và chờ workflow Release tạo xong gói `.zip` trên GitHub Releases. Hướng dẫn checkpoint ghi rõ tên release và tên file zip. GPU server không kết nối GitHub: người dùng tải gói trên máy công ty rồi copy file lên server (DEPLOYMENT_GUIDE §6.1).
 
 ---
 
@@ -29,14 +29,16 @@
 sequenceDiagram
     participant C as Claude (Env A)
     participant G as GitHub
-    participant O as Operator (Env B -> Env C)
-    participant S as GPU server
-    C->>G: code + tests + checkpoint instructions (merged to main, pushed)
-    O->>G: git pull
-    O->>S: upload repo
+    participant O as Operator (company PC)
+    participant S as GPU server (no GitHub)
+    C->>G: merge to main + tag vX.Y.Z + push
+    G->>G: Release workflow: build .zip + BUILD_INFO.json + .sha256, verify, publish
+    O->>G: download .zip + .zip.sha256 from GitHub Releases
+    O->>S: copy both files
+    S->>S: sha256sum -c, unzip, vbench release verify
     O->>S: run checkpoint commands
-    S-->>O: <run_id>.tar.zst + SHA256SUMS
-    O-->>C: bundle / logs / screenshots
+    S-->>O: copy back <run_id>.tar.zst + SHA256SUMS
+    O-->>C: bundle / logs / screenshots (incoming/ or attachment)
     C->>C: vbench bundle verify -> aggregate -> analyze
     C->>G: fixes / next phase
 ```
@@ -94,15 +96,14 @@ Phase 4–8 có thể đổi thứ tự sau Phase 3 nếu ưu tiên thay đổi;
   - `.github/workflows/ci.yml`: lint, type check, test, độ phủ ≥ 80%.
   - `.gitignore` cho `artifacts/**` (giữ `.gitkeep`), `.env`, cache model.
 - Test: schema round-trip, ghi nhận provenance, checksum artifact, mock run tạo manifest + event hợp lệ, trình tạo leaderboard từ chối run `is_mock`.
-- **⏸ HITL checkpoint 1:** người vận hành chạy
+- Bổ sung (2026-09-22): gói release offline — `vbench release build|verify`, workflow Release, `source_state()` (git hoặc release), kiểm tra `source_integrity`, `home_outside_repo`, `network:pypi` trong `env check`.
+- **⏸ HITL checkpoint 1:** người vận hành đưa gói release lên server theo `DEPLOYMENT_GUIDE.md` §6.1 (kiểm tra sha256, giải nén, `uv sync`, `vbench release verify`), rồi chạy trong thư mục release:
   ```bash
-  set -a; source $VBENCH_HOME/.env; set +a
-  uv sync
   uv run vbench env check --output $VBENCH_HOME/bundles/env_report.json
   uv run vbench run --model mock --profile mock_smoke            # prints RUN_ID
   uv run vbench bundle create <RUN_ID>
   ```
-  và gửi về `env_report.json` cùng bundle mock (`<RUN_ID>.tar.zst` + `.SHA256SUMS`), chứng minh chuỗi thu thập → đóng gói → kiểm tra hoạt động trên server. Claude dùng kết quả này để chốt cấu trúc venv cho từng model, độ tương thích vLLM/CUDA và kế hoạch dùng đĩa.
+  và gửi về output của `vbench release verify`, `env_report.json` cùng bundle mock (`<RUN_ID>.tar.zst` + `.SHA256SUMS`), chứng minh chuỗi thu thập → đóng gói → kiểm tra hoạt động trên server. Claude dùng kết quả này để chốt cấu trúc venv cho từng model, độ tương thích vLLM/CUDA và kế hoạch dùng đĩa.
 - Điều kiện hoàn thành: CI xanh, đã nhận và review env report.
 
 ### Phase 2 — Model Gateway & Adapter đầu tiên
@@ -211,13 +212,13 @@ Kích thước chính xác và ước tính thời gian GPU sẽ được đặt
 - [ ] Cập nhật tài liệu (`METRIC_DEFINITIONS.md` cho metric mới, `DATASET_SPEC.md` cho dataset mới, `DEPLOYMENT_GUIDE.md` cho lệnh mới).
 - [ ] Mock run end-to-end chạy được trên Env A.
 - [ ] Viết hướng dẫn checkpoint HITL (lệnh, thời gian chạy dự kiến, file cần gửi về).
-- [ ] Đã merge vào `main` và push lên GitHub trước khi giao checkpoint.
+- [ ] Đã merge vào `main`, tạo tag, push, và workflow Release đã đăng gói `.zip` lên GitHub Releases trước khi giao checkpoint.
 - [ ] Không có giá trị benchmark nào xuất hiện ở đâu mà không đến từ một bundle được gửi về.
 
 ---
 
 ## 7. Bước tiếp theo
 
-1. Người vận hành chạy checkpoint 1 trên GPU server (xem Phase 1 ở trên và `DEPLOYMENT_GUIDE.md` §6.2).
+1. Người vận hành tải gói release mới nhất trên máy công ty, copy lên GPU server và chạy checkpoint 1 (xem Phase 1 ở trên và `DEPLOYMENT_GUIDE.md` §6.1–6.2).
 2. Claude phân tích `env_report.json` + bundle mock, rồi bắt đầu Phase 2.
 3. Chủ dự án điền anchor/SLO trong `configs/scoring/anchors.yaml` trước Phase 3.
