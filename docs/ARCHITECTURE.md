@@ -1,47 +1,49 @@
-# Architecture — Japanese AI Call Center Speech-to-Speech Benchmark
+# Kiến trúc — Benchmark Speech-to-Speech cho Tổng đài AI tiếng Nhật
 
-| Field | Value |
+| Trường | Giá trị |
 |---|---|
-| Status | **APPROVED** (2026-09-21). v0.2.0 applies review answers: no Docker on GPU server, vLLM-based serving in per-model `uv` venvs |
-| Version | 0.2.0 |
-| Date | 2026-09-21 |
-| Scope | Benchmark framework for native Speech-to-Speech (S2S) models, Japanese call center use case |
+| Trạng thái | **ĐÃ DUYỆT** (2026-09-21). v0.2.0 áp dụng kết quả review: GPU server không có Docker, phục vụ model bằng vLLM trong `uv` venv riêng cho từng model |
+| Phiên bản | 0.2.0 |
+| Ngày | 2026-09-21 |
+| Phạm vi | Framework benchmark cho các mô hình Speech-to-Speech (S2S) bản địa, bài toán tổng đài tiếng Nhật |
+
+> Bản tiếng Việt. Tên metric, lệnh CLI, đường dẫn, tên trường cấu hình và code giữ nguyên tiếng Anh để khớp với source code.
 
 ---
 
-## 1. Goals and Non-Goals
+## 1. Mục tiêu và Ngoài phạm vi
 
-### 1.1 Goals
+### 1.1 Mục tiêu
 
-1. Compare 6 OSS native S2S models and 1 commercial baseline under **identical, reproducible** conditions.
-2. Cover 5 layers: Japanese capability, realtime voice, tool calling, voice quality, infrastructure & TCO.
-3. Produce a **business-oriented ranking** (35/25/15/15/10 weighting) derived **only from measured results**.
-4. Make every number traceable: how measured, source data, timestamp, model version, code version.
-5. Support the human-in-the-loop execution model: code is authored on a machine without GPU, executed by a human on a GPU server, and results are returned for analysis.
+1. So sánh 6 mô hình S2S mã nguồn mở và 1 baseline thương mại trong điều kiện **giống hệt nhau, có thể tái lập**.
+2. Bao phủ 5 lớp: năng lực tiếng Nhật, giọng nói thời gian thực, gọi công cụ (tool calling), chất lượng giọng nói, hạ tầng & TCO.
+3. Tạo **bảng xếp hạng theo góc nhìn kinh doanh** (trọng số 35/25/15/15/10) **chỉ từ kết quả đo thực tế**.
+4. Mọi con số đều truy vết được: đo như thế nào, dữ liệu nguồn, thời điểm, phiên bản model, phiên bản code.
+5. Hỗ trợ mô hình vận hành có con người tham gia (human-in-the-loop): code được viết trên máy không có GPU, con người chạy trên GPU server, kết quả được gửi lại để phân tích.
 
-### 1.2 Non-Goals
+### 1.2 Ngoài phạm vi
 
-- Training or fine-tuning models.
-- Building a production call center system. The tool-calling backends are deterministic **mocks**.
-- Finding the strongest research model. The question is "which model is most deployable for a Japanese call center on our hardware budget".
-- Producing any number without an executed run. The framework never estimates, extrapolates, or imputes metric values.
+- Huấn luyện hoặc fine-tune model.
+- Xây dựng hệ thống tổng đài production. Các backend cho tool calling là **mock** có tính tất định (deterministic).
+- Tìm model mạnh nhất về mặt nghiên cứu. Câu hỏi cần trả lời là "model nào triển khai được tốt nhất cho tổng đài tiếng Nhật với ngân sách phần cứng hiện có".
+- Tạo ra bất kỳ con số nào khi chưa có lần chạy thực tế. Framework không bao giờ ước lượng, ngoại suy hay tự điền (impute) giá trị metric.
 
 ---
 
-## 2. Hard Constraints
+## 2. Ràng buộc cứng
 
-| # | Constraint | Architectural consequence |
+| # | Ràng buộc | Hệ quả kiến trúc |
 |---|---|---|
-| C1 | Developer machine (Env A) has no GPU | Everything except model inference must run on CPU. A `mock` adapter enables full end-to-end tests without GPU. Scoring/reporting runs on Env A from returned artifacts. |
-| C2 | GPU server (Env C) is operated by a human, not by Claude | Execution is packaged as a small number of CLI commands with a preflight check. Outputs are bundled into one archive with checksums for the return trip. |
-| C3 | 1x H100 80GB | Models are benchmarked **one at a time**. No two models are resident simultaneously (except the evaluator ASR/judge, which is loaded in a separate phase). |
-| C4 | 200GB SSD | Model weights are downloaded, benchmarked, and evicted per model. Datasets store audio compactly (16 kHz / 24 kHz mono FLAC). Raw artifacts are pruned/compressed per run. A disk budget check is part of preflight. |
-| C5 | Models have conflicting Python dependencies | Each model is served in its **own `uv` virtual environment** (no Docker on the GPU server) behind a uniform network protocol. The harness never imports model code. |
-| C6 | No fabricated results / labels | Metric values only come from `MetricRecord`s produced by evaluators from raw artifacts. Missing = `null` with reason, never 0 or a guess. Synthetic data is flagged. Mock runs can never enter a leaderboard. |
+| C1 | Máy dev (Env A) không có GPU để benchmark | Mọi thứ ngoài inference của model phải chạy được trên CPU. Adapter `mock` cho phép test end-to-end không cần GPU. Chấm điểm/báo cáo chạy trên Env A từ artifact được gửi về. |
+| C2 | GPU server (Env C) do con người vận hành, không phải Claude | Việc thực thi được đóng gói thành một số ít lệnh CLI kèm bước kiểm tra trước (preflight). Kết quả được gom vào một file nén kèm checksum để gửi về. |
+| C3 | 1x H100 80GB | Benchmark **từng model một**. Không bao giờ có hai model cùng nằm trên GPU (trừ ASR/judge dùng để chấm, được nạp ở một giai đoạn riêng). |
+| C4 | SSD 200GB | Weights của model được tải, benchmark rồi xoá theo từng model. Dataset lưu audio gọn (FLAC mono 16 kHz / 24 kHz). Artifact thô được lọc/nén theo từng run. Kiểm tra dung lượng đĩa là một phần của preflight. |
+| C5 | Các model có thư viện Python xung đột nhau | Mỗi model chạy trong **`uv` virtual environment riêng** (GPU server không có Docker) sau một giao thức mạng thống nhất. Harness không bao giờ import code của model. |
+| C6 | Không bịa kết quả / nhãn | Giá trị metric chỉ đến từ các `MetricRecord` do evaluator tính từ artifact thô. Thiếu dữ liệu = `null` kèm lý do, không bao giờ là 0 hay giá trị đoán. Dữ liệu synthetic được gắn cờ. Run mock không bao giờ được đưa vào leaderboard. |
 
 ---
 
-## 3. System Context
+## 3. Bối cảnh hệ thống
 
 ```mermaid
 flowchart LR
@@ -65,27 +67,27 @@ flowchart LR
     ANA --> LB[leaderboard.csv/json/html<br/>benchmark_summary.json]
 ```
 
-The pipeline is split so that **only inference and GPU-bound evaluation** happen on Env C. Aggregation, scoring, and reporting are deterministic CPU code that can be re-run anywhere from the returned bundle, which lets results be re-analyzed and re-scored without re-running GPU workloads.
+Pipeline được tách để **chỉ inference và phần chấm điểm cần GPU** chạy trên Env C. Tổng hợp, chấm điểm và báo cáo là code CPU có tính tất định, chạy lại được ở bất kỳ đâu từ bundle gửi về. Nhờ đó có thể phân tích và chấm điểm lại mà không phải chạy lại workload GPU.
 
 ---
 
-## 4. Pipeline Stages
+## 4. Các giai đoạn của pipeline
 
-Every benchmark execution flows through five stages. Each stage reads only the outputs of previous stages from disk, so any stage can be re-run independently.
+Mọi lần chạy benchmark đi qua năm giai đoạn. Mỗi giai đoạn chỉ đọc đầu ra của giai đoạn trước từ đĩa, nên có thể chạy lại độc lập từng giai đoạn.
 
-| Stage | Where | Input | Output | GPU? |
+| Giai đoạn | Chạy ở đâu | Đầu vào | Đầu ra | Cần GPU? |
 |---|---|---|---|---|
-| **1. Prepare** | Env C | model registry entry, dataset manifests | weights downloaded + verified, runtime ready, dataset audio materialized + checksummed | no (network/disk) |
-| **2. Collect** | Env C | running model server, dataset, run config | `artifacts/raw/<run_id>/…`: response audio, text, tool calls, event timelines, NVML samples | yes |
-| **3. Evaluate** | Env C (GPU-bound evaluators) or Env A (CPU evaluators) | raw artifacts | `artifacts/processed/<run_id>/metrics.parquet` of `MetricRecord`s | partly |
-| **4. Aggregate & Score** | anywhere | one or more processed runs | per-model layer scores, business score, ranking with confidence intervals | no |
-| **5. Report** | anywhere | aggregated results | per-layer HTML/JSON reports, `leaderboard.*`, `benchmark_summary.json`, dashboards | no |
+| **1. Prepare** (chuẩn bị) | Env C | mục đăng ký model, manifest dataset | weights đã tải + kiểm tra, runtime sẵn sàng, audio dataset đã tạo + checksum | không (mạng/đĩa) |
+| **2. Collect** (thu thập) | Env C | model server đang chạy, dataset, cấu hình run | `artifacts/raw/<run_id>/…`: audio phản hồi, text, tool call, timeline sự kiện, mẫu NVML | có |
+| **3. Evaluate** (chấm) | Env C (evaluator cần GPU) hoặc Env A (evaluator CPU) | artifact thô | `artifacts/processed/<run_id>/metrics.parquet` gồm các `MetricRecord` | một phần |
+| **4. Aggregate & Score** (tổng hợp & chấm điểm) | bất kỳ | một hoặc nhiều run đã xử lý | điểm từng lớp theo model, business score, xếp hạng kèm khoảng tin cậy | không |
+| **5. Report** (báo cáo) | bất kỳ | kết quả tổng hợp | báo cáo HTML/JSON từng lớp, `leaderboard.*`, `benchmark_summary.json`, dashboard | không |
 
-Human MOS ratings (Layer 4) enter at Stage 3 as an additional input stored under `datasets/human_reviewed/`.
+Điểm MOS do người chấm (Lớp 4) được đưa vào ở Giai đoạn 3 như một đầu vào bổ sung, lưu trong `datasets/human_reviewed/`.
 
 ---
 
-## 5. Component Architecture
+## 5. Kiến trúc thành phần
 
 ```mermaid
 flowchart TB
@@ -106,7 +108,7 @@ flowchart TB
     SCORE --> REP[reporting<br/>Jinja2 + Plotly HTML, CSV, JSON]
 ```
 
-### 5.1 Repository layout
+### 5.1 Cấu trúc repository
 
 ```text
 benchmark/                      # Python package (import name: benchmark)
@@ -175,18 +177,18 @@ docs/
 
 ---
 
-## 6. Model Integration
+## 6. Tích hợp model
 
-### 6.1 Isolation: runtime per model
+### 6.1 Cô lập: mỗi model một runtime
 
-The 7 targets use different frameworks, dependency pins, and serving styles. The harness therefore **never imports model code**. Each OSS model runs inside its own dedicated `uv` venv under `$VBENCH_HOME/runtimes/<model>/.venv` (Docker is not available on the GPU server) and exposes a thin **Model Gateway Protocol** over localhost. The harness talks to every model the same way.
+7 model mục tiêu dùng framework, phiên bản thư viện và cách phục vụ khác nhau. Vì vậy harness **không bao giờ import code của model**. Mỗi model OSS chạy trong `uv` venv riêng tại `$VBENCH_HOME/runtimes/<model>/.venv` (GPU server không có Docker) và mở một **Model Gateway Protocol** mỏng qua localhost. Harness giao tiếp với mọi model theo cùng một cách.
 
-**Serving backend policy (decided in review):**
+**Chính sách backend phục vụ model (đã chốt khi review):**
 
-1. **vLLM is the default serving engine.** Where vLLM (or its official omni/audio extension, if that is what the model's card prescribes) supports the model, the runtime launches vLLM as a local process and the gateway (`server.py`) wraps it.
-2. **Fallback — official inference code.** If a model's audio path (e.g., speech decoder / talker / vocoder) is not supported by vLLM at the pinned vLLM version, the runtime uses the model's official inference code in the same venv. This is decided per model in Phase 2/9 from a smoke test, recorded as `runtime.engine` in the model YAML, and shown in every report, because engine choice affects latency and throughput.
-3. vLLM version is pinned per runtime (`uv.lock`), and `vllm` / `torch` / CUDA versions are captured in the run manifest.
-4. Weights are downloaded directly from Hugging Face on the GPU server (pinned `revision`), into `$HF_HOME` on the benchmark SSD.
+1. **vLLM là engine mặc định.** Nếu vLLM (hoặc bản mở rộng omni/audio chính thức của vLLM, nếu model card yêu cầu) hỗ trợ model, runtime sẽ chạy vLLM như một process cục bộ và gateway (`server.py`) bọc bên ngoài.
+2. **Phương án dự phòng — code inference chính thức.** Nếu phần xử lý audio của model (ví dụ speech decoder / talker / vocoder) không được vLLM hỗ trợ ở phiên bản vLLM đã chốt, runtime dùng code inference chính thức của model trong cùng venv. Việc này được quyết định cho từng model ở Phase 2/9 dựa trên smoke test, ghi vào trường `runtime.engine` trong YAML của model, và hiển thị trong mọi báo cáo, vì lựa chọn engine ảnh hưởng đến độ trễ và throughput.
+3. Phiên bản vLLM được chốt theo từng runtime (`uv.lock`); phiên bản `vllm` / `torch` / CUDA được ghi vào run manifest.
+4. Weights được tải trực tiếp từ Hugging Face trên GPU server (chốt `revision`), vào `$HF_HOME` trên SSD benchmark.
 
 ```mermaid
 sequenceDiagram
@@ -205,9 +207,9 @@ sequenceDiagram
     G-->>H: response.cancelled
 ```
 
-The protocol is deliberately modelled on the event shape of the OpenAI Realtime API so that the commercial baseline and OSS models share one event vocabulary. For each OSS model, the gateway (`runtimes/<model>/server.py`) translates this protocol into the model's native inference API.
+Giao thức được thiết kế có chủ đích theo cấu trúc event của OpenAI Realtime API, để baseline thương mại và các model OSS dùng chung một bộ từ vựng event. Với mỗi model OSS, gateway (`runtimes/<model>/server.py`) dịch giao thức này sang API inference gốc của model.
 
-### 6.2 Adapter interface (harness side)
+### 6.2 Giao diện adapter (phía harness)
 
 ```python
 class ModelCapabilities(BaseModel):
@@ -234,24 +236,24 @@ class ModelAdapter(Protocol):
     async def open_session(self, cfg: SessionConfig) -> SpeechSession: ...
 ```
 
-`ModelEvent` is a discriminated union: `AudioDelta`, `TextDelta`, `ToolCall`, `ResponseDone`, `ResponseCancelled`, `Error`. **All timestamps are taken by the harness on receipt** (`time.monotonic_ns()`), never taken from model-reported values, so latency is comparable across models.
+`ModelEvent` là một discriminated union gồm: `AudioDelta`, `TextDelta`, `ToolCall`, `ResponseDone`, `ResponseCancelled`, `Error`. **Mọi mốc thời gian đều do harness ghi khi nhận event** (`time.monotonic_ns()`), không bao giờ lấy từ giá trị model tự báo, nhờ vậy độ trễ so sánh được giữa các model.
 
-### 6.3 Capability matrix and "unsupported" handling
+### 6.3 Ma trận năng lực và xử lý "unsupported"
 
-Model capabilities (full duplex, native tool calling, streaming output, Japanese support) are recorded in `configs/models/<model>.yaml` with two separate fields: `claimed` (with a model-card URL as source) and `verified` (set only by a Phase 2 smoke test run). Architecture does **not** assume any model supports any capability.
+Năng lực của model (full duplex, tool calling native, streaming output, hỗ trợ tiếng Nhật) được ghi trong `configs/models/<model>.yaml` với hai trường riêng: `claimed` (nguồn là URL model card) và `verified` (chỉ được đặt bởi smoke test ở Phase 2). Kiến trúc **không** giả định model nào hỗ trợ năng lực nào.
 
-When a capability is missing, the framework uses a **documented, uniform fallback** and tags the result:
+Khi thiếu một năng lực, framework dùng một **phương án dự phòng thống nhất, có tài liệu** và gắn tag cho kết quả:
 
-| Missing capability | Fallback | Result tag |
+| Năng lực bị thiếu | Phương án dự phòng | Tag kết quả |
 |---|---|---|
-| Native full duplex / barge-in | Harness-side VAD orchestrator cancels generation when user speech is detected | `mode=orchestrated` (reported separately from `mode=native`) |
-| Native tool calling | Prompted JSON tool protocol (same prompt template for all such models), parsed by harness | `tool_mode=prompted` |
-| Streaming audio output | Measure full-response latency; TTFA = time to complete audio | `streaming=false` |
-| Not runnable at all (OOM, broken release) | None | metric = `null`, `status=not_measured`, reason recorded |
+| Full duplex / barge-in native | VAD orchestrator phía harness huỷ phần đang sinh khi phát hiện người dùng nói | `mode=orchestrated` (báo cáo tách riêng với `mode=native`) |
+| Tool calling native | Giao thức tool dạng JSON trong prompt (cùng một prompt template cho mọi model loại này), harness tự parse | `tool_mode=prompted` |
+| Streaming audio output | Đo độ trễ của toàn bộ phản hồi; TTFA = thời gian đến khi có audio hoàn chỉnh | `streaming=false` |
+| Hoàn toàn không chạy được (OOM, bản phát hành lỗi) | Không có | metric = `null`, `status=not_measured`, ghi lại lý do |
 
-Leaderboards display these tags next to scores so orchestrated and native results are never silently mixed.
+Leaderboard hiển thị các tag này cạnh điểm số để kết quả orchestrated và native không bao giờ bị trộn lẫn một cách âm thầm.
 
-### 6.4 Model registry entry (example shape)
+### 6.4 Mục đăng ký model (ví dụ cấu trúc)
 
 ```yaml
 # configs/models/qwen3_omni.yaml
@@ -279,55 +281,55 @@ sampling:                    # per-model defaults, recorded in run manifest
 disk_estimate_gb: null       # measured in Phase 2, not guessed
 ```
 
-The commercial baseline uses `runtime.kind: remote_api`, credentials come only from environment variables (`OPENAI_API_KEY`), and the exact API model string and API version are pinned in config and recorded in every manifest.
+Baseline thương mại dùng `runtime.kind: remote_api`. Thông tin xác thực chỉ lấy từ biến môi trường (`OPENAI_API_KEY`). Tên model API và phiên bản API chính xác được chốt trong cấu hình và ghi vào mọi manifest.
 
 ---
 
-## 7. Interaction Modes
+## 7. Chế độ tương tác
 
-Two execution modes cover all layers:
+Hai chế độ thực thi bao phủ mọi lớp:
 
-| Mode | Used by | Behaviour |
+| Chế độ | Dùng cho | Hành vi |
 |---|---|---|
-| **Turn mode** | L1, L3, L4 | Full user utterance sent (fast, not paced), wait for `ResponseDone`. Measures quality, not timing. Deterministic sampling where the model allows it. |
-| **Streaming mode** | L2, L5 | Audio sent in 20 ms frames at real-time pace by `audio.streamer`. Barge-in audio injected at scripted offsets by `audio.mixer`. Full event timeline recorded. |
+| **Turn mode** (theo lượt) | L1, L3, L4 | Gửi toàn bộ câu nói của người dùng (nhanh, không theo nhịp thời gian thực), chờ `ResponseDone`. Đo chất lượng, không đo thời gian. Dùng sampling tất định nếu model cho phép. |
+| **Streaming mode** (luồng) | L2, L5 | Audio gửi theo frame 20 ms đúng nhịp thời gian thực bằng `audio.streamer`. Audio barge-in được chèn vào tại các thời điểm định sẵn bằng `audio.mixer`. Ghi toàn bộ timeline sự kiện. |
 
-Multi-turn scenarios (long context memory, booking flows) are scripted dialogues: each user turn is a pre-recorded or synthesized audio file; the next user turn is sent after the model finishes (turn mode) or at a scripted time (streaming mode). User turns never depend on model output content, which keeps runs comparable across models. Dialogues that require branching are out of scope for v1.
+Các kịch bản nhiều lượt (nhớ ngữ cảnh dài, luồng đặt lịch) là hội thoại soạn sẵn: mỗi lượt người dùng là một file audio thu sẵn hoặc tổng hợp; lượt tiếp theo được gửi sau khi model trả lời xong (turn mode) hoặc tại thời điểm định sẵn (streaming mode). Lượt người dùng không bao giờ phụ thuộc nội dung model trả lời, nhờ đó các run so sánh được giữa các model. Hội thoại rẽ nhánh nằm ngoài phạm vi v1.
 
 ---
 
-## 8. Layer Designs
+## 8. Thiết kế từng lớp
 
-For precise metric formulas see `docs/METRIC_DEFINITIONS.md` (to be written in Phase 0b). This section defines the measurement mechanism.
+Công thức chính xác của từng metric xem ở `docs/METRIC_DEFINITIONS.md`. Phần này mô tả cơ chế đo.
 
-### 8.1 Layer 1 — Japanese Capability
+### 8.1 Lớp 1 — Năng lực tiếng Nhật
 
-| Metric | Mechanism |
+| Metric | Cơ chế |
 |---|---|
-| ASR CER / WER | Task prompt asks the model to transcribe/repeat the utterance. Output text channel (if present) and ASR-judge transcript of output audio are scored separately. CER on NFKC-normalized text with punctuation removed; WER on MeCab (fugashi + UniDic) tokens. |
-| Intent classification | Customer utterance → model asked for structured intent label from a closed set in the system prompt. Accuracy + macro-F1 against gold labels. |
-| Slot extraction | Same utterances, gold slots (date, time, name, phone, product…). Slot-level precision/recall/F1 after value normalization (dates to ISO, numbers to half-width). |
-| Japanese understanding | Question answering over spoken Japanese passages, closed-form answers scored exactly; open-form scored by LLM judge with rubric. |
-| Keigo compliance | Model's spoken response → ASR judge → (a) rule-based detector for forbidden casual forms / required honorific patterns, (b) LLM judge with keigo rubric. Judge calibrated against a human-labeled subset; agreement (Cohen's κ) reported. |
-| Long context memory | Multi-turn dialogues where early-turn facts are queried later. Recall accuracy by turn distance buckets. |
+| ASR CER / WER | Prompt yêu cầu model chép lại/nhắc lại câu nói. Kênh text đầu ra (nếu có) và bản chép lời audio đầu ra do ASR judge tạo được chấm riêng. CER tính trên text đã chuẩn hoá NFKC và bỏ dấu câu; WER tính trên token MeCab (fugashi + UniDic). |
+| Phân loại intent | Câu nói của khách hàng → model được yêu cầu trả nhãn intent có cấu trúc, trong tập đóng khai báo ở system prompt. Accuracy + macro-F1 so với nhãn chuẩn (gold). |
+| Trích xuất slot | Cùng các câu nói, có slot chuẩn (ngày, giờ, tên, số điện thoại, sản phẩm…). Precision/recall/F1 ở mức slot sau khi chuẩn hoá giá trị (ngày về ISO, số về half-width). |
+| Hiểu tiếng Nhật | Hỏi đáp trên đoạn văn tiếng Nhật dạng nói; câu trả lời dạng đóng chấm khớp chính xác, dạng mở chấm bằng LLM judge theo rubric. |
+| Tuân thủ keigo | Câu trả lời bằng giọng của model → ASR judge → (a) bộ phát hiện theo luật cho các dạng thân mật bị cấm / mẫu kính ngữ bắt buộc, (b) LLM judge theo rubric keigo. Judge được hiệu chỉnh với một tập con có người gán nhãn; báo cáo độ đồng thuận (Cohen's κ). |
+| Nhớ ngữ cảnh dài | Hội thoại nhiều lượt, trong đó thông tin ở lượt đầu được hỏi lại ở lượt sau. Accuracy nhớ lại theo nhóm khoảng cách lượt. |
 
-**Evaluator bias control.** The ASR judge (e.g., a Whisper-class model, pinned version) is the same for all models and is also run on the *reference* audio to report its own error floor. LLM judges run with temperature 0, pinned model version, and versioned rubric prompts; the judge model must not be one of the benchmarked models.
+**Kiểm soát sai lệch của evaluator.** ASR judge (ví dụ một model họ Whisper, chốt phiên bản) dùng chung cho mọi model, và cũng được chạy trên audio *tham chiếu* để báo cáo mức lỗi nền của chính nó. LLM judge chạy với temperature 0, chốt phiên bản model và dùng prompt rubric có phiên bản; model làm judge không được là một trong các model đang benchmark.
 
-### 8.2 Layer 2 — Realtime Voice
+### 8.2 Lớp 2 — Giọng nói thời gian thực
 
-All latencies are measured on the GPU server over localhost (network excluded by design; the cloud baseline includes network and is labelled as such, with measured RTT to the API reported alongside).
+Mọi độ trễ được đo trên GPU server qua localhost (cố ý loại trừ mạng; baseline cloud có tính cả mạng và được ghi nhãn như vậy, kèm RTT đến API đo được).
 
-| Metric | Definition (summary) |
+| Metric | Định nghĩa (tóm tắt) |
 |---|---|
-| TTFA | `t(first AudioDelta with non-silent content) − t(end of user speech)`, where end of user speech is known exactly from the stimulus file. P50/P95/P99 reported. |
-| Interrupt latency | Barge-in audio injected at a scripted offset while the model is speaking. `t(model output audio stops) − t(barge-in onset)`. Stop = cancel event or ≥ N ms of silence in output stream. |
-| Barge-in success | Share of barge-ins where output stopped within SLO **and** the model's next response addresses the interrupting utterance (LLM-judged). |
-| False barge-in | Backchannel / noise injection ("はい", "ええ", cough) should *not* stop the model. Share of wrongful stops. |
-| Turn taking | Distribution of response gap; overlap rate; premature responses during user mid-utterance pauses. |
-| Duplex interaction | Only for `native_full_duplex=verified`; otherwise reported as `unsupported`. |
-| Long conversation stability | 10–30 minute scripted calls: TTFA drift over time, error/crash rate, VRAM growth, response-quality drift (L1 checks on late turns). |
+| TTFA | `t(AudioDelta đầu tiên có nội dung không phải im lặng) − t(người dùng nói xong)`, trong đó thời điểm người dùng nói xong được biết chính xác từ file kích thích. Báo cáo P50/P95/P99. |
+| Độ trễ ngắt lời (interrupt latency) | Audio barge-in được chèn tại thời điểm định sẵn khi model đang nói. `t(audio đầu ra của model dừng) − t(bắt đầu barge-in)`. Dừng = event huỷ hoặc ≥ N ms im lặng trong luồng đầu ra. |
+| Barge-in thành công | Tỷ lệ lần barge-in mà đầu ra dừng trong SLO **và** câu trả lời tiếp theo của model xử lý đúng câu ngắt lời (LLM chấm). |
+| Barge-in sai | Tiếng đệm / nhiễu ("はい", "ええ", tiếng ho) *không* được làm model dừng. Tỷ lệ dừng sai. |
+| Luân phiên lượt nói | Phân bố khoảng trống giữa lượt; tỷ lệ nói chồng; trả lời sớm khi người dùng ngập ngừng giữa câu. |
+| Tương tác duplex | Chỉ áp dụng khi `native_full_duplex=verified`; ngược lại báo là `unsupported`. |
+| Ổn định hội thoại dài | Cuộc gọi soạn sẵn 10–30 phút: độ trôi TTFA theo thời gian, tỷ lệ lỗi/crash, mức tăng VRAM, độ trôi chất lượng câu trả lời (kiểm tra L1 ở các lượt cuối). |
 
-### 8.3 Layer 3 — Tool Calling
+### 8.3 Lớp 3 — Tool calling
 
 ```mermaid
 flowchart LR
@@ -341,44 +343,44 @@ flowchart LR
     STATE --> EV
 ```
 
-- **Tool definitions** are JSON Schemas shared by all models (native function calling where verified, prompted JSON otherwise).
-- **toolserver** is a FastAPI app with deterministic, seedable in-memory state (calendar slots, CRM records, FAQ KB, transfer queues). Reset per scenario.
-- Metrics:
-  - *Tool success rate*: calls that are schema-valid and succeed against the backend.
-  - *JSON accuracy*: schema validity rate and exact/normalized argument match vs expected trace.
-  - *Hallucinated tool rate*: calls to undefined tools, or arguments with values not grounded in the dialogue or prior tool results.
-  - *Task completion rate*: final mock state equals expected final state (booking created with correct slot, transfer to correct queue, etc.). Tool-trace order differences are allowed if the final state is correct.
+- **Định nghĩa tool** là JSON Schema dùng chung cho mọi model (function calling native nếu đã verified, ngược lại dùng JSON trong prompt).
+- **toolserver** là ứng dụng FastAPI có trạng thái trong bộ nhớ, tất định và đặt seed được (lịch trống, bản ghi CRM, kho FAQ, hàng đợi chuyển cuộc gọi). Reset cho từng kịch bản.
+- Metric:
+  - *Tool success rate*: tỷ lệ lời gọi hợp lệ theo schema và thực hiện thành công với backend.
+  - *JSON accuracy*: tỷ lệ hợp lệ theo schema và tỷ lệ khớp tham số chính xác/sau chuẩn hoá so với trace kỳ vọng.
+  - *Hallucinated tool rate*: lời gọi đến tool không tồn tại, hoặc tham số có giá trị không có căn cứ trong hội thoại hay kết quả tool trước đó.
+  - *Task completion rate*: trạng thái mock cuối cùng khớp trạng thái kỳ vọng (đặt lịch đúng khung giờ, chuyển đúng hàng đợi, v.v.). Cho phép thứ tự trace khác nếu trạng thái cuối đúng.
 
-### 8.4 Layer 4 — Voice Quality
+### 8.4 Lớp 4 — Chất lượng giọng nói
 
-| Component | Mechanism |
+| Thành phần | Cơ chế |
 |---|---|
-| Automatic MOS proxies | Pretrained MOS predictors (pinned versions). Japanese validity of each predictor is an explicit caveat; predictors are calibrated against human MOS on a subset and the correlation is reported. |
-| Pronunciation | ASR-roundtrip CER on scripted read-aloud prompts (model asked to say fixed Japanese text including numbers, dates, names, business vocabulary). |
-| Accent quality | Human-rated. Optional automatic proxy: pitch-accent comparison via F0 contour against reference readings (experimental, not in business score until validated). |
-| Emotional expression | Scripted prompts requiring apology / empathy / cheerful tone; human rating. |
-| Consistency | Speaker-embedding cosine similarity across turns and sessions (same voice config). |
-| Human MOS | `annotation/mos_app.py` (Gradio): blind, randomized, model identity hidden, anchors/attention checks included, ≥ N raters per clip. Ratings exported as CSV into `datasets/human_reviewed/`. MOS with 95% CI reported. |
+| MOS tự động (proxy) | Các bộ dự đoán MOS đã huấn luyện sẵn (chốt phiên bản). Độ tin cậy của từng bộ dự đoán với tiếng Nhật là một lưu ý rõ ràng; bộ dự đoán được hiệu chỉnh với MOS của người chấm trên một tập con và báo cáo hệ số tương quan. |
+| Phát âm | CER qua vòng ASR trên các câu đọc soạn sẵn (model được yêu cầu nói đúng câu tiếng Nhật cố định có số, ngày, tên, từ vựng nghiệp vụ). |
+| Chất lượng ngữ điệu (accent) | Người chấm. Proxy tự động tuỳ chọn: so sánh pitch-accent qua đường F0 với bản đọc tham chiếu (thử nghiệm, chưa đưa vào business score cho đến khi được kiểm chứng). |
+| Biểu cảm | Prompt soạn sẵn yêu cầu giọng xin lỗi / đồng cảm / vui vẻ; người chấm. |
+| Tính nhất quán | Độ tương đồng cosine của speaker embedding giữa các lượt và các phiên (cùng cấu hình giọng). |
+| MOS của người chấm | `annotation/mos_app.py` (Gradio): chấm mù, thứ tự ngẫu nhiên, ẩn danh tính model, có clip neo/kiểm tra sự chú ý, ≥ N người chấm mỗi clip. Kết quả xuất CSV vào `datasets/human_reviewed/`. Báo cáo MOS kèm CI 95%. |
 
-### 8.5 Layer 5 — Infrastructure & TCO
+### 8.5 Lớp 5 — Hạ tầng & TCO
 
-| Metric | Mechanism |
+| Metric | Cơ chế |
 |---|---|
-| VRAM usage | NVML sampling at 10 Hz during idle, single call, and each concurrency level; peak and steady state. |
-| GPU utilization | NVML SM utilization, same sampling. |
-| Throughput | Audio seconds generated per wall-clock second; tokens/s where exposed. |
-| Concurrent calls | Concurrency sweep N = 1, 2, 4, 8, … streaming-mode calls. **Max concurrent calls** = largest N where TTFA P95 ≤ SLO and error rate ≤ SLO (SLOs in `configs/scoring/anchors.yaml`). |
-| Cost per minute | `gpu_hourly_cost / (60 × max_concurrent_calls_at_SLO)` for OSS; token-usage × configured price for the API baseline. |
-| Cost per call | Cost per minute × measured mean call duration of the standard scenario set. |
-| TCO | Configurable model (hardware amortization or cloud rental, power, ops overhead, target call volume). All price inputs are **user-supplied** in `configs/cost/pricing.yaml` with a `source` and `as_of` date; the framework never assumes a price. |
+| VRAM | Lấy mẫu NVML 10 Hz khi rảnh, khi 1 cuộc gọi, và ở từng mức đồng thời; giá trị đỉnh và ổn định. |
+| GPU utilization | SM utilization từ NVML, cùng cách lấy mẫu. |
+| Throughput | Số giây audio sinh ra trên mỗi giây đồng hồ; tokens/s nếu model cung cấp. |
+| Số cuộc gọi đồng thời | Quét mức đồng thời N = 1, 2, 4, 8, … cuộc gọi streaming. **Số cuộc gọi đồng thời tối đa** = N lớn nhất mà TTFA P95 ≤ SLO và tỷ lệ lỗi ≤ SLO (SLO trong `configs/scoring/anchors.yaml`). |
+| Chi phí mỗi phút | `gpu_hourly_cost / (60 × max_concurrent_calls_at_SLO)` với OSS; lượng token sử dụng × giá cấu hình với baseline API. |
+| Chi phí mỗi cuộc gọi | Chi phí mỗi phút × thời lượng cuộc gọi trung bình đo được của bộ kịch bản chuẩn. |
+| TCO | Mô hình cấu hình được (khấu hao phần cứng hoặc thuê cloud, điện, chi phí vận hành, lưu lượng gọi mục tiêu). Mọi giá đầu vào do **người dùng cung cấp** trong `configs/cost/pricing.yaml` kèm `source` và ngày `as_of`; framework không bao giờ tự giả định giá. |
 
 ---
 
-## 9. Data Model and Provenance
+## 9. Mô hình dữ liệu và truy vết
 
 ### 9.1 Run manifest
 
-Written at the start of every run (`artifacts/raw/<run_id>/manifest.json`) and finalized at the end.
+Được ghi khi bắt đầu mỗi run (`artifacts/raw/<run_id>/manifest.json`) và hoàn tất khi kết thúc.
 
 ```python
 class RunManifest(BaseModel):
@@ -400,7 +402,7 @@ class RunManifest(BaseModel):
 
 ### 9.2 Metric record
 
-Every number that appears in any report traces back to one or more `MetricRecord`s.
+Mọi con số xuất hiện trong bất kỳ báo cáo nào đều truy ngược được về một hoặc nhiều `MetricRecord`.
 
 ```python
 class MetricRecord(BaseModel):
@@ -420,9 +422,9 @@ class MetricRecord(BaseModel):
     tags: dict[str, str]         # mode=orchestrated, tool_mode=prompted, ...
 ```
 
-Per-sample records are stored; aggregates are computed in DuckDB, so every aggregate can be re-derived and bootstrapped.
+Record được lưu ở mức từng mẫu; giá trị tổng hợp được tính trong DuckDB, nên mọi giá trị tổng hợp đều tính lại và bootstrap lại được.
 
-### 9.3 Artifact layout
+### 9.3 Cấu trúc artifact
 
 ```text
 artifacts/
@@ -445,74 +447,76 @@ artifacts/
   dashboards/<report_id>/index.html
 ```
 
-`vbench bundle create <run_id>` produces `<run_id>.tar.zst` (raw events + processed metrics + logs, optionally audio) with `SHA256SUMS`. `vbench bundle verify` validates it on Env A before any analysis.
+`vbench bundle create <run_id>` tạo `<run_id>.tar.zst` (event thô + metric đã xử lý + log, tuỳ chọn kèm audio) cùng `SHA256SUMS`. `vbench bundle verify` kiểm tra bundle trên Env A trước khi phân tích.
+
+> Ghi chú Phase 1: runner hiện tại lưu audio dạng `.wav`; chuyển sang FLAC khi có module audio ở Phase 3.
 
 ---
 
-## 10. Scoring and Ranking
+## 10. Chấm điểm và xếp hạng
 
-### 10.1 Normalization
+### 10.1 Chuẩn hoá
 
-Each metric is mapped to `[0, 1]` using **fixed anchors** from `configs/scoring/anchors.yaml` (e.g., TTFA: 1.0 at ≤ `best_ms`, 0.0 at ≥ `worst_ms`, linear or log in between). Fixed anchors — rather than min-max across models — keep scores stable when a model is added or removed. Anchors are business SLOs set by the project owner before results are seen, and are versioned; changing them creates a new scoring version.
+Mỗi metric được đưa về `[0, 1]` bằng các **mốc cố định (anchor)** trong `configs/scoring/anchors.yaml` (ví dụ TTFA: 1.0 khi ≤ `best_ms`, 0.0 khi ≥ `worst_ms`, tuyến tính hoặc log ở giữa). Dùng mốc cố định thay vì min-max giữa các model giúp điểm ổn định khi thêm hoặc bớt model. Các mốc là SLO nghiệp vụ do chủ dự án đặt **trước khi thấy kết quả**, và có phiên bản; thay đổi mốc tạo ra một phiên bản chấm điểm mới.
 
 ### 10.2 Business score
 
-| Dimension | Weight | Built from |
+| Nhóm | Trọng số | Tạo từ |
 |---|---|---|
-| Japanese Quality | 35% | L1: CER, intent F1, slot F1, understanding, keigo, long context |
-| Task Completion | 25% | L3: task completion rate (primary), tool success, JSON accuracy, hallucinated tool rate (penalty) |
-| Barge-In | 15% | L2: interrupt latency, barge-in success, false barge-in rate, TTFA |
-| Cost | 15% | L5: cost per minute at SLO |
-| Voice Quality | 10% | L4: human MOS (primary), automatic proxies only if human MOS is not yet available (flagged) |
+| Chất lượng tiếng Nhật | 35% | L1: CER, intent F1, slot F1, hiểu, keigo, ngữ cảnh dài |
+| Hoàn thành tác vụ | 25% | L3: task completion rate (chính), tool success, JSON accuracy, hallucinated tool rate (trừ điểm) |
+| Barge-In | 15% | L2: độ trễ ngắt lời, barge-in thành công, tỷ lệ barge-in sai, TTFA |
+| Chi phí | 15% | L5: chi phí mỗi phút tại SLO |
+| Chất lượng giọng nói | 10% | L4: MOS của người chấm (chính); proxy tự động chỉ dùng khi chưa có MOS người chấm (có gắn cờ) |
 
-Sub-weights inside each dimension live in `configs/scoring/business_v1.yaml` and are reported with every leaderboard.
+Trọng số con trong mỗi nhóm nằm ở `configs/scoring/business_v1.yaml` và được báo cáo kèm mọi leaderboard.
 
-### 10.3 Missing data policy
+### 10.3 Chính sách dữ liệu thiếu
 
-- `unsupported` → dimension component scores 0 (the capability genuinely does not exist) and is visibly tagged.
-- `not_measured` / `error` → **no imputation**. The model's business score is marked `incomplete`; it appears in the leaderboard below complete models with the missing dimensions listed, and is never assigned a rank position among complete models.
-- `is_mock=true` or `git_dirty=true` runs are rejected by the leaderboard builder (dirty runs allowed only with explicit `--allow-dirty`, and then flagged).
+- `unsupported` → thành phần đó được 0 điểm (vì model thực sự không có năng lực này) và được gắn tag hiển thị.
+- `not_measured` / `error` → **không tự điền giá trị**. Business score của model bị đánh dấu `incomplete`; model vẫn xuất hiện trong leaderboard, xếp dưới các model đầy đủ, liệt kê các nhóm còn thiếu, và không bao giờ được gán thứ hạng giữa các model đầy đủ.
+- Run có `is_mock=true` hoặc `git_dirty=true` bị trình tạo leaderboard từ chối (run dirty chỉ được chấp nhận khi có `--allow-dirty` rõ ràng, và khi đó được gắn cờ).
 
-### 10.4 Uncertainty
+### 10.4 Độ bất định
 
-Business score 95% CIs are computed by bootstrap over samples within each layer. The leaderboard shows rank, score, CI, and a pairwise "significantly better than next" indicator. Ties within CI are reported as ties.
+Khoảng tin cậy 95% của business score được tính bằng bootstrap trên các mẫu trong từng lớp. Leaderboard hiển thị thứ hạng, điểm, CI, và chỉ báo "tốt hơn model kế tiếp một cách có ý nghĩa thống kê". Các model hoà nhau trong CI được báo là đồng hạng.
 
-### 10.5 Deployment gates (reported, not scored)
+### 10.5 Điều kiện triển khai (chỉ báo cáo, không tính điểm)
 
-Pass/fail gates shown beside the ranking: fits on 1x H100 80GB, produces Japanese speech output, license permits commercial deployment (manual review field), runtime stable over long-call test. A model failing a gate stays in the table but is flagged "not deployable as benchmarked".
-
----
-
-## 11. Datasets (summary)
-
-Full spec in `docs/DATASET_SPEC.md` (Phase 0b). Key principles:
-
-- Directory: `datasets/<name>/<version>/` with `manifest.jsonl` (one sample per line: id, audio path, sha256, transcript, labels, `synthetic` flag, `source`, `license`), `DATASHEET.md`, and a `build.py` that reproduces the dataset from sources.
-- **Audio is not committed to git.** Manifests and build scripts are; audio is fetched/generated on the server by `vbench data prepare` and verified by checksum.
-- Source categories:
-  1. Public Japanese speech corpora with compatible licenses (for ASR/CER).
-  2. Call center scenario scripts written in Japanese (intent, slot, tool calling, keigo), rendered to audio by TTS → `synthetic: true`, generator and voice recorded.
-  3. Human-recorded versions of a subset of scenarios → `datasets/human_reviewed/`.
-- Labels for synthetic scenarios are **defined by construction** in the scenario spec (the script says which intent and slots it contains); they are not produced by any model. Human-reviewed labels are stored separately with reviewer IDs (pseudonymous) and dates.
-- Every dataset version is immutable; changes create a new version.
+Các điều kiện đạt/không đạt hiển thị cạnh bảng xếp hạng: vừa với 1x H100 80GB, sinh được tiếng Nhật, license cho phép triển khai thương mại (trường review thủ công), runtime ổn định trong bài test cuộc gọi dài. Model không đạt vẫn nằm trong bảng nhưng bị đánh dấu "không triển khai được như cấu hình đã benchmark".
 
 ---
 
-## 12. Cross-Cutting Concerns
+## 11. Dataset (tóm tắt)
 
-| Concern | Decision |
+Đặc tả đầy đủ ở `docs/DATASET_SPEC.md`. Nguyên tắc chính:
+
+- Thư mục: `datasets/<name>/<version>/` gồm `manifest.jsonl` (mỗi dòng một mẫu: id, đường dẫn audio, sha256, transcript, nhãn, cờ `synthetic`, `source`, `license`), `DATASHEET.md`, và `build.py` để tái tạo dataset từ nguồn.
+- **Audio không commit vào git.** Chỉ commit manifest và script build; audio được tải/tạo trên server bằng `vbench data prepare` và kiểm tra bằng checksum.
+- Các loại nguồn:
+  1. Corpus tiếng Nhật công khai có license phù hợp (cho ASR/CER).
+  2. Kịch bản tổng đài viết bằng tiếng Nhật (intent, slot, tool calling, keigo), chuyển thành audio bằng TTS → `synthetic: true`, ghi lại generator và giọng.
+  3. Bản thu giọng người thật cho một tập con kịch bản → `datasets/human_reviewed/`.
+- Nhãn của kịch bản synthetic được **xác định ngay khi soạn** trong đặc tả kịch bản (kịch bản ghi rõ nó chứa intent và slot nào); không do model nào sinh ra. Nhãn do người review được lưu riêng, kèm ID người review (ẩn danh) và ngày.
+- Mọi phiên bản dataset là bất biến; mọi thay đổi tạo phiên bản mới.
+
+---
+
+## 12. Các vấn đề xuyên suốt
+
+| Vấn đề | Quyết định |
 |---|---|
-| Configuration | Pydantic models loaded from YAML; env vars override (prefix `VBENCH_`); secrets only from env; no hardcoded paths (all paths relative to `VBENCH_HOME`, default repo root). |
-| Logging | `structlog` JSON lines to stdout and `logs/run.jsonl`; every line carries `run_id`, `model_id`, `layer`, `sample_id`. No `print`. |
-| Reproducibility | Pinned model revisions, per-runtime `uv.lock` hashes, pinned vLLM version, fixed seeds, resolved-config hash, dataset checksums, deterministic sampling where supported, N repeats for stochastic metrics. |
-| Fault tolerance | Per-sample checkpointing: a crashed run resumes from the last completed sample (`vbench run --resume <run_id>`). Per-sample timeouts produce `status=error` records, not aborts. |
-| Testing | pytest, CPU-only, `mock` adapter + recorded fixture timelines; coverage gate ≥ 80% in CI. GPU paths are exercised only by server-side smoke runs. |
-| CI | GitHub Actions: `ruff`, `mypy --strict` on `benchmark/`, `pytest --cov`, schema/config validation, dataset manifest lint. |
-| Security | No credentials in repo; `.env` git-ignored; API key presence checked in preflight without logging it. |
+| Cấu hình | Model Pydantic nạp từ YAML; biến môi trường ghi đè (tiền tố `VBENCH_`); secret chỉ lấy từ env; không hardcode đường dẫn (mọi đường dẫn tương đối với `VBENCH_HOME`, mặc định là thư mục gốc repo). |
+| Logging | `structlog` dạng JSON lines ra stdout và `logs/run.jsonl`; mỗi dòng có `run_id`, `model_id`, `layer`, `sample_id`. Không dùng `print`. |
+| Tái lập | Chốt revision model, hash `uv.lock` của từng runtime, chốt phiên bản vLLM, seed cố định, hash cấu hình đã resolve, checksum dataset, sampling tất định khi được hỗ trợ, lặp N lần cho metric có tính ngẫu nhiên. |
+| Chịu lỗi | Checkpoint theo từng mẫu: run bị crash tiếp tục từ mẫu hoàn thành gần nhất (`vbench run --resume <run_id>`). Timeout theo mẫu tạo record `status=error`, không dừng cả run. |
+| Test | pytest, chỉ CPU, adapter `mock` + timeline fixture ghi sẵn; CI yêu cầu độ phủ ≥ 80%. Các nhánh code GPU chỉ được chạy qua smoke run trên server. |
+| CI | GitHub Actions: `ruff`, `mypy --strict` trên `benchmark/`, `pytest --cov`, kiểm tra schema/config, lint manifest dataset. |
+| Bảo mật | Không lưu thông tin xác thực trong repo; `.env` nằm trong git-ignore; preflight chỉ kiểm tra có/không có API key, không ghi giá trị ra log. |
 
 ---
 
-## 13. CLI Surface (planned)
+## 13. Các lệnh CLI (dự kiến)
 
 ```text
 vbench env check                         # GPU, driver, CUDA, disk budget, uv, HF + OpenAI reachability, API keys present
@@ -529,39 +533,41 @@ vbench leaderboard --runs <run_id>... [--scoring business_v1]
 vbench mos export|serve|import           # human MOS workflow
 ```
 
-A `scripts/run_all.sh` wraps the per-model loop (prepare → serve → run → evaluate → bundle → evict) so the human operator runs one command per model or one for all.
+Script `scripts/run_all.sh` bọc vòng lặp cho từng model (prepare → serve → run → evaluate → bundle → evict), để người vận hành chỉ cần chạy một lệnh cho mỗi model hoặc một lệnh cho tất cả.
+
+Đã có từ Phase 1: `vbench env check`, `vbench run --model mock`, `vbench bundle create`, `vbench bundle verify`, `vbench version`.
 
 ---
 
-## 14. Key Risks
+## 14. Rủi ro chính
 
-| Risk | Impact | Mitigation |
+| Rủi ro | Ảnh hưởng | Giảm thiểu |
 |---|---|---|
-| A model's official release lacks a usable streaming/duplex server | L2 incomparable | Gateway protocol + documented orchestrated fallback, tagged results |
-| Total weights exceed 200GB SSD | Cannot co-host | Per-model prepare/evict; disk check in preflight; measured sizes recorded in Phase 2 |
-| Dependency conflicts / CUDA mismatch per model | Runtime failures | Isolated `uv` venv per model; pinned lockfiles; smoke test before any full run |
-| vLLM does not support a model's audio output path | Model cannot be served by vLLM | Documented fallback to official inference code; engine recorded and reported |
-| Evaluator bias (ASR judge, LLM judge, MOS predictor weak on Japanese) | Distorted scores | Judge error floor on reference audio, human calibration subset, agreement metrics reported, human MOS primary for L4 |
-| GPT-Realtime measured over internet vs OSS over localhost | Unfair latency comparison | Report separately labelled; RTT measured; optional network emulation for OSS |
-| Round-trip delay (human-in-the-loop) | Slow iteration | Smoke profile (minutes) before full profile; resumable runs; rich logs so one round-trip is enough to debug |
-| Synthetic TTS stimuli differ from real callers | Optimistic results | Human-recorded subset; results reported per stimulus source |
-| Model license restricts commercial use | Winner not deployable | License gate reported next to ranking |
+| Bản phát hành chính thức của một model không có server streaming/duplex dùng được | L2 không so sánh được | Gateway protocol + phương án orchestrated có tài liệu, kết quả được gắn tag |
+| Tổng dung lượng weights vượt SSD 200GB | Không chứa được cùng lúc | Prepare/evict theo từng model; kiểm tra đĩa ở preflight; dung lượng đo thực tế được ghi ở Phase 2 |
+| Xung đột thư viện / lệch CUDA giữa các model | Runtime lỗi | `uv` venv riêng cho từng model; chốt lockfile; smoke test trước mọi full run |
+| vLLM không hỗ trợ phần xử lý audio đầu ra của một model | Không phục vụ model đó bằng vLLM được | Phương án dự phòng dùng code inference chính thức có tài liệu; engine được ghi lại và báo cáo |
+| Sai lệch của evaluator (ASR judge, LLM judge, bộ dự đoán MOS yếu với tiếng Nhật) | Điểm bị méo | Mức lỗi nền của judge trên audio tham chiếu, tập con hiệu chỉnh do người gán nhãn, báo cáo độ đồng thuận, MOS người chấm là chính cho L4 |
+| GPT-Realtime đo qua internet còn OSS đo qua localhost | So sánh độ trễ không công bằng | Báo cáo riêng có ghi nhãn; đo RTT; tuỳ chọn giả lập mạng cho OSS |
+| Độ trễ vòng lặp có con người tham gia | Lặp chậm | Profile smoke (vài phút) trước profile full; run có thể tiếp tục; log đủ chi tiết để một vòng gửi về là đủ debug |
+| Audio kích thích tổng hợp bằng TTS khác người gọi thật | Kết quả lạc quan | Tập con thu giọng người thật; báo cáo kết quả theo từng nguồn kích thích |
+| License model hạn chế dùng thương mại | Model thắng không triển khai được | Điều kiện license được báo cáo cạnh bảng xếp hạng |
 
 ---
 
-## 15. Open Questions for Review
+## 15. Câu hỏi mở cho review
 
-Resolved in review (2026-09-21):
+Đã giải quyết khi review (2026-09-21):
 
-- ~~Runtime isolation~~ — No Docker. Models are served with vLLM in per-model `uv` venvs (§6.1).
-- ~~Internet on GPU server~~ — The server downloads models directly from Hugging Face.
-- ~~GPT-Realtime access~~ — The server can reach the OpenAI API; the baseline runs from the GPU server.
+- ~~Cô lập runtime~~ — Không có Docker. Model được phục vụ bằng vLLM trong `uv` venv riêng cho từng model (§6.1).
+- ~~Internet trên GPU server~~ — Server tải model trực tiếp từ Hugging Face.
+- ~~Truy cập GPT-Realtime~~ — Server gọi được OpenAI API; baseline chạy từ GPU server.
 
-Still open (to be answered during Phase 0b):
+Còn mở (trả lời trong Phase 0b và trước Phase 3):
 
-1. **Japanese stimulus audio:** Which TTS may be used to synthesize scenario audio (license must allow benchmark use), and can the team record a human subset (how many speakers/hours)?
-2. **Human MOS raters:** How many native Japanese raters are available, and roughly how many clips can they rate?
-3. **LLM judge:** Which judge model is acceptable (must not be a benchmarked model; requires API access)?
-4. **SLOs / anchors:** Target TTFA P95, interrupt latency, and max acceptable cost per minute — these define normalization and must be fixed before results are seen.
-5. **Cost inputs:** GPU pricing basis for TCO (owned H100 amortized vs cloud rental rate).
-6. **Business domain:** Primary call types to emphasize (appointment booking, order inquiry, support, ...) for scenario weighting.
+1. **Audio kích thích tiếng Nhật:** Được dùng TTS nào để tổng hợp audio kịch bản (license phải cho phép dùng cho benchmark), và nhóm có thu được một tập con giọng người thật không (bao nhiêu người nói/bao nhiêu giờ)?
+2. **Người chấm MOS:** Có bao nhiêu người chấm là người Nhật bản ngữ, và họ chấm được khoảng bao nhiêu clip?
+3. **LLM judge:** Model judge nào được chấp nhận (không được là model đang benchmark; cần quyền truy cập API)?
+4. **SLO / anchor:** Mục tiêu TTFA P95, độ trễ ngắt lời, chi phí tối đa chấp nhận được mỗi phút — các giá trị này quyết định việc chuẩn hoá và phải được chốt trước khi thấy kết quả.
+5. **Đầu vào chi phí:** Cơ sở tính giá GPU cho TCO (H100 sở hữu khấu hao hay giá thuê cloud).
+6. **Nghiệp vụ:** Các loại cuộc gọi chính cần ưu tiên (đặt lịch hẹn, hỏi đơn hàng, hỗ trợ, ...) để đặt trọng số kịch bản.

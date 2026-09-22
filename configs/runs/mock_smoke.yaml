@@ -1,5 +1,5 @@
-# Pipeline dry run with the mock adapter (CPU only). Produces is_mock=true runs that can
-# never be ranked. Used by tests and to validate the server setup before real models.
+# Chạy thử pipeline bằng mock adapter (chỉ CPU). Tạo run có is_mock=true, không bao giờ
+# được xếp hạng. Dùng cho test và để kiểm tra server trước khi chạy model thật.
 name: mock_smoke
 description: Mock adapter end-to-end check of collect -> manifest -> bundle.
 layers: [L1, L3]

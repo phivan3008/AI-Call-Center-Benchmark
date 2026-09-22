@@ -1,8 +1,9 @@
-# Business score composition (see docs/METRIC_DEFINITIONS.md §7.2).
-# Top-level weights are fixed by CLAUDE.md. Sub-weights are a PROPOSAL awaiting owner sign-off.
+# Cấu trúc business score (xem docs/METRIC_DEFINITIONS.md §7.2).
+# Trọng số cấp cao (weight) cố định theo CLAUDE.md. Trọng số con (trong metrics) là ĐỀ XUẤT,
+# chờ chủ dự án ký duyệt. Tổng trọng số con trong mỗi nhóm phải bằng 1.0.
 version: business_v1
 anchors: anchors_v1
-status: proposed              # proposed | signed_off
+status: proposed              # proposed (đề xuất) | signed_off (đã ký duyệt)
 signed_off_by: null
 signed_off_at: null
 
@@ -10,7 +11,7 @@ dimensions:
   japanese_quality:
     weight: 0.35
     metrics:
-      l1.asr.cer: 0.25                     # variant: kana, channel: audio
+      l1.asr.cer: 0.25                     # biến thể: kana, kênh: audio
       l1.intent.macro_f1: 0.15
       l1.slot.f1: 0.15
       l1.understanding.accuracy: 0.15
@@ -22,7 +23,7 @@ dimensions:
       l3.task.completion_rate: 0.60
       l3.tool.success_rate: 0.15
       l3.json.arg_accuracy: 0.15
-      l3.tool.hallucination_rate: 0.10     # direction down: scored as 1 - rate via anchors
+      l3.tool.hallucination_rate: 0.10     # chiều down: được chấm là 1 - tỷ lệ thông qua anchor
   barge_in:
     weight: 0.15
     metrics:
@@ -45,5 +46,5 @@ dimensions:
       l4.emotion.human: 0.05
 
 primary_channel:
-  stimulus: telephone_8k       # DATASET_SPEC §6 (proposal)
+  stimulus: telephone_8k       # DATASET_SPEC §6 (kênh kích thích chính)
   response: audio              # METRIC_DEFINITIONS §1.3

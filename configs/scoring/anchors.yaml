@@ -1,16 +1,20 @@
-# Normalization anchors and SLOs for business scoring (see docs/METRIC_DEFINITIONS.md §7.1).
+# Anchor chuẩn hoá và SLO cho business score (xem docs/METRIC_DEFINITIONS.md §7.1).
 #
-# These are BUSINESS THRESHOLDS set by the project owner, not benchmark results.
-# They must be filled in and signed off BEFORE any benchmark result is seen.
-# `null` = not yet decided; the scorer refuses to run while a required anchor is null.
+# Đây là NGƯỠNG NGHIỆP VỤ do chủ dự án đặt, không phải kết quả benchmark.
+# Phải điền và ký duyệt TRƯỚC KHI thấy bất kỳ kết quả benchmark nào.
+# `null` = chưa quyết định; bộ chấm điểm từ chối chạy khi một anchor bắt buộc còn null.
+#
+# Cách điền: best = giá trị được coi là hoàn hảo (điểm 1.0), worst = giá trị được coi là
+# không dùng được (điểm 0.0). direction: up = càng cao càng tốt, down = càng thấp càng tốt.
+# Khi ký duyệt: đặt status: signed_off, điền signed_off_by (tên/vai trò) và signed_off_at (ngày).
 version: anchors_v1
-status: draft                 # draft | signed_off
+status: draft                 # draft (nháp) | signed_off (đã ký duyệt)
 signed_off_by: null
 signed_off_at: null
 
 metrics:
-  # Ratio metrics default to natural bounds unless the owner overrides them.
-  l1.asr.cer:                       {direction: down, best: 0.0, worst: null}
+  # Metric tỷ lệ mặc định dùng biên tự nhiên (0..1), trừ khi chủ dự án ghi đè.
+  l1.asr.cer:                       {direction: down, best: 0.0, worst: null}   # worst: CER (0..1) coi như không dùng được
   l1.intent.macro_f1:               {direction: up,   best: 1.0, worst: 0.0}
   l1.slot.f1:                       {direction: up,   best: 1.0, worst: 0.0}
   l1.understanding.accuracy:        {direction: up,   best: 1.0, worst: 0.0}
@@ -22,31 +26,31 @@ metrics:
   l3.json.arg_accuracy:             {direction: up,   best: 1.0, worst: 0.0}
   l3.tool.hallucination_rate:       {direction: down, best: 0.0, worst: 1.0}
 
-  l2.interrupt.latency_ms.p95:      {direction: down, best: null, worst: null}
+  l2.interrupt.latency_ms.p95:      {direction: down, best: null, worst: null}   # đơn vị ms
   l2.bargein.success_rate:          {direction: up,   best: 1.0,  worst: 0.0}
   l2.bargein.false_stop_rate:       {direction: down, best: 0.0,  worst: 1.0}
-  l2.ttfa_ms.p95:                   {direction: down, best: null, worst: null}
+  l2.ttfa_ms.p95:                   {direction: down, best: null, worst: null}   # đơn vị ms
 
-  l5.cost.per_minute_usd:           {direction: down, best: null, worst: null}
+  l5.cost.per_minute_usd:           {direction: down, best: null, worst: null}   # đơn vị USD/phút
 
   l4.mos.human:                     {direction: up,   best: 5.0, worst: 1.0}
   l4.naturalness.human:             {direction: up,   best: 5.0, worst: 1.0}
   l4.accent.human:                  {direction: up,   best: 5.0, worst: 1.0}
   l4.emotion.human:                 {direction: up,   best: 5.0, worst: 1.0}
-  l4.pronunciation.cer:             {direction: down, best: 0.0, worst: null}
-  l4.consistency.speaker_sim:       {direction: up,   best: null, worst: null}
+  l4.pronunciation.cer:             {direction: down, best: 0.0, worst: null}   # worst: CER (0..1)
+  l4.consistency.speaker_sim:       {direction: up,   best: null, worst: null}   # cosine similarity (0..1)
 
 slo:
-  ttfa_p95_slo_ms: null           # used by concurrency sweep (l5.concurrency.max_at_slo)
-  interrupt_slo_ms: null          # used by l2.bargein.success_rate
-  underrun_slo: null              # max l2.stream.underrun_rate at a passing concurrency level
-  error_rate_slo: null            # max error rate at a passing concurrency level
+  ttfa_p95_slo_ms: null           # ms; dùng cho quét mức đồng thời (l5.concurrency.max_at_slo)
+  interrupt_slo_ms: null          # ms; dùng cho l2.bargein.success_rate
+  underrun_slo: null              # l2.stream.underrun_rate tối đa ở một mức đồng thời được coi là đạt (0..1)
+  error_rate_slo: null            # tỷ lệ lỗi tối đa ở một mức đồng thời được coi là đạt (0..1)
 
 gates:
-  ja_rate_gate: null              # min l1.language.ja_rate
-  stability_error_gate: null      # max l2.stability.error_rate
+  ja_rate_gate: null              # l1.language.ja_rate tối thiểu (0..1)
+  stability_error_gate: null      # l2.stability.error_rate tối đa (0..1)
 
 signal:
-  activity_threshold_dbfs: -45    # vad_v1 active-frame threshold (config default, recorded per run)
-  stop_silence_ms: null           # silence needed to declare generation stopped
-  interrupt_timeout_ms: null      # barge-in counted as failure after this
+  activity_threshold_dbfs: -45    # ngưỡng frame có tiếng của vad_v1 (mặc định cấu hình, ghi lại trong mỗi run)
+  stop_silence_ms: null           # ms im lặng cần có để coi là model đã dừng sinh
+  interrupt_timeout_ms: null      # ms; quá thời gian này thì lần barge-in bị tính là thất bại

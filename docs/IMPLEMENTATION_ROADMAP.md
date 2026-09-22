@@ -1,26 +1,29 @@
-# Implementation Roadmap
+# Lộ trình triển khai
 
-| Field | Value |
+| Trường | Giá trị |
 |---|---|
-| Status | **APPROVED** (2026-09-21) |
-| Version | 0.2.0 |
-| Date | 2026-09-21 |
-| Depends on | `docs/ARCHITECTURE.md` v0.2.0 |
+| Trạng thái | **ĐÃ DUYỆT** (2026-09-21) |
+| Phiên bản | 0.2.0 |
+| Ngày | 2026-09-21 |
+| Phụ thuộc | `docs/ARCHITECTURE.md` v0.2.0 |
+
+> Bản tiếng Việt. Lệnh, tên file, tên metric và code giữ nguyên tiếng Anh.
 
 ---
 
-## 1. Principles
+## 1. Nguyên tắc
 
-1. **Vertical slice first.** Get one model through one layer to a (partial) leaderboard end-to-end before widening. This validates the whole pipeline — including the human round-trip — as early as possible.
-2. **Mock before GPU.** Every phase is finished and tested on Env A with the `mock` adapter before any GPU command is handed to the operator.
-3. **Smoke before full.** Every GPU checkpoint starts with the `smoke` profile (target: minutes of GPU time), then `standard`, then `full`.
-4. **One human round-trip per checkpoint.** Each checkpoint lists exact commands to run and exact files to return. Logs are rich enough to debug from one bundle.
-5. **Incremental review.** Each phase ends with a PR; the next phase starts only after review.
-6. **No results in code or docs until measured.** Placeholders are `null` / `TBD`, never plausible-looking numbers.
+1. **Làm lát cắt dọc trước.** Đưa một model qua một lớp đến leaderboard (một phần) từ đầu đến cuối trước khi mở rộng. Cách này kiểm chứng toàn bộ pipeline — kể cả vòng gửi kết quả qua con người — càng sớm càng tốt.
+2. **Mock trước, GPU sau.** Mỗi phase được hoàn thành và test trên Env A bằng adapter `mock` trước khi giao bất kỳ lệnh GPU nào cho người vận hành.
+3. **Smoke trước, full sau.** Mỗi checkpoint GPU bắt đầu bằng profile `smoke` (mục tiêu: vài phút GPU), rồi đến `standard`, rồi `full`.
+4. **Mỗi checkpoint một vòng gửi qua con người.** Mỗi checkpoint liệt kê chính xác lệnh cần chạy và file cần gửi về. Log đủ chi tiết để debug chỉ từ một bundle.
+5. **Review từng bước.** Mỗi phase kết thúc bằng một lần review; phase sau chỉ bắt đầu khi đã review xong.
+6. **Không có kết quả trong code hay tài liệu cho đến khi đo.** Chỗ chưa có giá trị để `null` / `TBD`, không bao giờ điền con số trông hợp lý.
+7. **Luôn đưa lên GitHub trước mỗi checkpoint.** Trước khi nhờ người dùng chạy bất cứ thứ gì trên máy công ty hoặc GPU server, Claude merge vào `main`, push lên GitHub, và ghi rõ commit cần dùng trong hướng dẫn checkpoint. Người dùng chỉ lấy code bằng cách tải từ GitHub.
 
 ---
 
-## 2. Execution Loop (per checkpoint)
+## 2. Vòng thực thi (mỗi checkpoint)
 
 ```mermaid
 sequenceDiagram
@@ -28,7 +31,7 @@ sequenceDiagram
     participant G as GitHub
     participant O as Operator (Env B -> Env C)
     participant S as GPU server
-    C->>G: code + tests + checkpoint instructions (PR merged)
+    C->>G: code + tests + checkpoint instructions (merged to main, pushed)
     O->>G: git pull
     O->>S: upload repo
     O->>S: run checkpoint commands
@@ -38,60 +41,60 @@ sequenceDiagram
     C->>G: fixes / next phase
 ```
 
-Every checkpoint below is marked **⏸ HITL**. At that point Claude stops and asks: *"Run the benchmark on the GPU server and provide the output."*
+Mỗi checkpoint dưới đây được đánh dấu **⏸ HITL**. Đến điểm đó Claude dừng lại và nói: *"Chạy benchmark trên máy chủ GPU và cung cấp đầu ra."*
 
 ---
 
-## 3. Phase Overview
+## 3. Tổng quan các phase
 
-| Phase | Name | GPU checkpoint | Main output |
+| Phase | Tên | Checkpoint GPU | Đầu ra chính |
 |---|---|---|---|
-| 0a | Architecture & roadmap | no | this document, `ARCHITECTURE.md` |
-| 0b | Specifications | no | `DATASET_SPEC.md`, `METRIC_DEFINITIONS.md`, `DEPLOYMENT_GUIDE.md`, scoring anchors |
-| 1 | Core framework | ⏸ env check | package skeleton, config, provenance, logging, artifacts, CLI, mock adapter, CI |
-| 2 | Model gateway + first adapters | ⏸ smoke per model | gateway protocol, runtime for reference OSS model + GPT-Realtime, capability verification |
-| 3 | Vertical slice: L1 ASR → leaderboard | ⏸ smoke L1 | L1 ASR/CER, evaluate, aggregate, scoring, leaderboard (partial) |
-| 4 | Layer 1 complete | ⏸ standard L1 | intent, slot, understanding, keigo, long context, judge calibration |
-| 5 | Layer 3 tool calling | ⏸ standard L3 | toolserver, scenarios, tool metrics |
-| 6 | Layer 2 realtime | ⏸ standard L2 | streamer, barge-in mixer, latency metrics, orchestrated fallback |
-| 7 | Layer 5 infra & TCO | ⏸ concurrency sweep | NVML sampler, concurrency sweep, cost model |
-| 8 | Layer 4 voice quality | ⏸ L4 + human MOS | MOS proxies, consistency, Gradio MOS app, human MOS import |
-| 9 | Remaining adapters | ⏸ smoke per model | runtimes for all 6 OSS models |
-| 10 | Full benchmark & final ranking | ⏸ full run | final leaderboard, business report, analysis |
-| 11 | Iteration | as needed | fixes from analysis, dataset v2, rescoring |
+| 0a | Kiến trúc & lộ trình | không | tài liệu này, `ARCHITECTURE.md` |
+| 0b | Đặc tả | không | `DATASET_SPEC.md`, `METRIC_DEFINITIONS.md`, `DEPLOYMENT_GUIDE.md`, anchor chấm điểm |
+| 1 | Khung cốt lõi | ⏸ env check | khung package, config, provenance, logging, artifact, CLI, mock adapter, CI |
+| 2 | Model gateway + adapter đầu tiên | ⏸ smoke từng model | gateway protocol, runtime cho model OSS tham chiếu + GPT-Realtime, xác minh năng lực |
+| 3 | Lát cắt dọc: L1 ASR → leaderboard | ⏸ smoke L1 | L1 ASR/CER, evaluate, aggregate, chấm điểm, leaderboard (một phần) |
+| 4 | Hoàn thiện Lớp 1 | ⏸ standard L1 | intent, slot, hiểu, keigo, ngữ cảnh dài, hiệu chỉnh judge |
+| 5 | Lớp 3 tool calling | ⏸ standard L3 | toolserver, kịch bản, metric tool |
+| 6 | Lớp 2 thời gian thực | ⏸ standard L2 | streamer, bộ trộn barge-in, metric độ trễ, phương án orchestrated |
+| 7 | Lớp 5 hạ tầng & TCO | ⏸ quét mức đồng thời | NVML sampler, quét mức đồng thời, mô hình chi phí |
+| 8 | Lớp 4 chất lượng giọng nói | ⏸ L4 + MOS người chấm | MOS proxy, tính nhất quán, ứng dụng MOS Gradio, nhập MOS người chấm |
+| 9 | Các adapter còn lại | ⏸ smoke từng model | runtime cho cả 6 model OSS |
+| 10 | Benchmark đầy đủ & xếp hạng cuối | ⏸ full run | leaderboard cuối, báo cáo kinh doanh, phân tích |
+| 11 | Lặp cải tiến | khi cần | sửa lỗi từ phân tích, dataset v2, chấm điểm lại |
 
-Phases 4–8 can be reordered after Phase 3 if priorities change; each depends only on Phases 1–3.
+Phase 4–8 có thể đổi thứ tự sau Phase 3 nếu ưu tiên thay đổi; mỗi phase chỉ phụ thuộc Phase 1–3.
 
 ---
 
-## 4. Phase Details
+## 4. Chi tiết từng phase
 
-### Phase 0a — Architecture & Roadmap
+### Phase 0a — Kiến trúc & Lộ trình ✅
 
-- Deliverables: `docs/ARCHITECTURE.md`, `docs/IMPLEMENTATION_ROADMAP.md`.
-- Exit: both approved by reviewer; open questions in ARCHITECTURE §15 answered or explicitly deferred.
+- Sản phẩm: `docs/ARCHITECTURE.md`, `docs/IMPLEMENTATION_ROADMAP.md`.
+- Điều kiện hoàn thành: cả hai được duyệt; câu hỏi mở ở ARCHITECTURE §15 đã được trả lời hoặc ghi rõ là hoãn lại.
 
-### Phase 0b — Specifications
+### Phase 0b — Đặc tả ✅
 
-- Deliverables:
-  - `docs/METRIC_DEFINITIONS.md`: every metric with formula, unit, direction, evaluator, source artifact, normalization anchor, and which business dimension it feeds.
-  - `docs/DATASET_SPEC.md`: manifest schema, dataset list per layer with source/license, synthetic vs human-reviewed policy, versioning, scenario YAML schema for L1/L2/L3.
-  - `docs/DEPLOYMENT_GUIDE.md`: server prerequisites, directory layout on server, per-model runtime setup, disk budget procedure, bundle return procedure.
-  - `configs/scoring/anchors.yaml` + `business_v1.yaml` — **values set by the project owner** (SLOs), not by Claude.
-- Exit: specs approved; anchors signed off before any result is seen.
+- Sản phẩm:
+  - `docs/METRIC_DEFINITIONS.md`: mỗi metric có công thức, đơn vị, chiều tốt, evaluator, artifact nguồn, anchor chuẩn hoá, và nhóm business score mà nó đóng góp.
+  - `docs/DATASET_SPEC.md`: schema manifest, danh sách dataset theo lớp kèm nguồn/license, chính sách synthetic vs người review, phiên bản, schema YAML kịch bản cho L1/L2/L3.
+  - `docs/DEPLOYMENT_GUIDE.md`: yêu cầu trên server, cấu trúc thư mục trên server, thiết lập runtime cho từng model, quy trình quản lý dung lượng đĩa, quy trình gửi bundle về.
+  - `configs/scoring/anchors.yaml` + `business_v1.yaml` — **giá trị do chủ dự án đặt** (SLO), không phải Claude.
+- Điều kiện hoàn thành: đặc tả được duyệt; anchor được ký duyệt trước khi thấy bất kỳ kết quả nào.
 
-### Phase 1 — Core Framework (CPU only)
+### Phase 1 — Khung cốt lõi (chỉ CPU) ✅ code / ⏸ đang chờ checkpoint 1
 
-- Deliverables:
-  - `pyproject.toml` (Python 3.11+, `uv`), `ruff`, `mypy`, `pytest` config.
-  - `benchmark/core/*`: config, schemas (`RunManifest`, `MetricRecord`, `ModelEvent`, …), provenance, artifacts (atomic writes, SHA256SUMS), structlog logging, registries.
-  - `benchmark/adapters/base.py` + `mock.py` (deterministic synthetic events, configurable latency/failures, `is_mock=true`).
-  - `benchmark/cli.py` with `env check`, `run` (mock only), `bundle`, `bundle verify`.
-  - `vbench env check`: GPU/driver/CUDA via NVML, free disk vs budget, `uv` available, outbound network to model hubs and OpenAI API, env vars present (values never logged).
-  - `.github/workflows/ci.yml`: lint, type check, tests, coverage ≥ 80%.
-  - `.gitignore` for `artifacts/**` (keep `.gitkeep`), `.env`, model caches.
-- Tests: schema round-trips, provenance capture, artifact checksums, mock run produces valid manifest + events, leaderboard builder rejects `is_mock` runs.
-- **⏸ HITL checkpoint 1:** operator runs
+- Sản phẩm:
+  - `pyproject.toml` (Python 3.11+, `uv`), cấu hình `ruff`, `mypy`, `pytest`.
+  - `benchmark/core/*`: config, schemas (`RunManifest`, `MetricRecord`, `ModelEvent`, …), provenance, artifacts (ghi nguyên tử, SHA256SUMS), logging bằng structlog, registries.
+  - `benchmark/adapters/base.py` + `mock.py` (event synthetic tất định, độ trễ/lỗi cấu hình được, `is_mock=true`).
+  - `benchmark/cli.py` với `env check`, `run` (chỉ mock), `bundle create`, `bundle verify`.
+  - `vbench env check`: GPU/driver/CUDA qua NVML, dung lượng đĩa trống, có `uv`, kết nối mạng ra ngoài đến model hub và OpenAI API, có biến môi trường (không bao giờ ghi giá trị ra log).
+  - `.github/workflows/ci.yml`: lint, type check, test, độ phủ ≥ 80%.
+  - `.gitignore` cho `artifacts/**` (giữ `.gitkeep`), `.env`, cache model.
+- Test: schema round-trip, ghi nhận provenance, checksum artifact, mock run tạo manifest + event hợp lệ, trình tạo leaderboard từ chối run `is_mock`.
+- **⏸ HITL checkpoint 1:** người vận hành chạy
   ```bash
   set -a; source $VBENCH_HOME/.env; set +a
   uv sync
@@ -99,19 +102,19 @@ Phases 4–8 can be reordered after Phase 3 if priorities change; each depends o
   uv run vbench run --model mock --profile mock_smoke            # prints RUN_ID
   uv run vbench bundle create <RUN_ID>
   ```
-  and returns `env_report.json` plus the mock bundle (`<RUN_ID>.tar.zst` + `.SHA256SUMS`), which proves the collect -> bundle -> verify round trip works on the server. Claude uses it to finalize the per-model venv layout, vLLM/CUDA compatibility, and disk plan.
-- Exit: CI green, env report received and reviewed.
+  và gửi về `env_report.json` cùng bundle mock (`<RUN_ID>.tar.zst` + `.SHA256SUMS`), chứng minh chuỗi thu thập → đóng gói → kiểm tra hoạt động trên server. Claude dùng kết quả này để chốt cấu trúc venv cho từng model, độ tương thích vLLM/CUDA và kế hoạch dùng đĩa.
+- Điều kiện hoàn thành: CI xanh, đã nhận và review env report.
 
-### Phase 2 — Model Gateway & First Adapters
+### Phase 2 — Model Gateway & Adapter đầu tiên
 
-- Deliverables:
-  - Gateway protocol spec (`docs/GATEWAY_PROTOCOL.md`) + shared gateway base server (FastAPI WebSocket) used by all runtimes.
-  - Runtime (`uv` venv + vLLM, official-code fallback if vLLM cannot serve the audio path) for **one reference OSS model** (proposed: Qwen3-Omni-30B-A3B-FP8) and adapter.
-  - `openai_realtime.py` adapter for GPT-Realtime baseline (model string + API version pinned in config).
-  - `vbench model prepare|serve|evict`, health checks, launch timeouts.
-  - `smoke` profile: ~10 Japanese utterances in turn mode + 2 in streaming mode + 1 tool call + 1 barge-in, purely to verify capabilities and the pipeline, not to score.
-  - Capability verification: smoke results write `verified` fields into a capability report (not into the model YAML automatically; reviewed first).
-- Tests: gateway protocol conformance suite run against the mock runtime; adapter unit tests with recorded WebSocket fixtures.
+- Sản phẩm:
+  - Đặc tả gateway protocol (`docs/GATEWAY_PROTOCOL.md`) + gateway server dùng chung (FastAPI WebSocket) cho mọi runtime.
+  - Runtime (`uv` venv + vLLM, dự phòng bằng code chính thức nếu vLLM không phục vụ được phần audio) cho **một model OSS tham chiếu** (đề xuất: Qwen3-Omni-30B-A3B-FP8) và adapter tương ứng.
+  - Adapter `openai_realtime.py` cho baseline GPT-Realtime (tên model + phiên bản API chốt trong config).
+  - `vbench model prepare|serve|evict`, health check, timeout khởi động.
+  - Profile `smoke`: ~10 câu tiếng Nhật ở turn mode + 2 ở streaming mode + 1 tool call + 1 barge-in, chỉ để kiểm tra năng lực và pipeline, không để chấm điểm.
+  - Xác minh năng lực: kết quả smoke ghi các trường `verified` vào một capability report (không tự động ghi vào YAML của model; phải review trước).
+- Test: bộ test tuân thủ gateway protocol chạy với mock runtime; unit test adapter với fixture WebSocket ghi sẵn.
 - **⏸ HITL checkpoint 2:**
   ```bash
   uv run vbench model prepare --model qwen3-omni-30b-a3b-fp8
@@ -120,99 +123,101 @@ Phases 4–8 can be reordered after Phase 3 if priorities change; each depends o
   uv run vbench run --model gpt-realtime --profile smoke
   uv run vbench bundle create <run_id>   # for each run
   ```
-  Return: bundles + measured disk usage of weights and venvs.
-- Exit: both models complete smoke run; capability report reviewed.
+  Gửi về: các bundle + dung lượng đĩa đo được của weights và venv.
+- Điều kiện hoàn thành: cả hai model chạy xong smoke; capability report đã review.
 
-### Phase 3 — Vertical Slice: Layer 1 ASR → Leaderboard
+### Phase 3 — Lát cắt dọc: Lớp 1 ASR → Leaderboard
 
-- Deliverables:
-  - `evaluators/ja_text.py`: NFKC normalization, punctuation/whitespace rules, full/half-width unification, number handling policy; CER; WER via fugashi + UniDic.
-  - `evaluators/asr_judge.py`: pinned ASR model for output-audio transcription; judge error floor computed on reference audio.
-  - First dataset: `datasets/ja_asr_eval/v1` manifest + `build.py` from a licensed public corpus subset.
-  - `vbench evaluate`, `vbench aggregate` (DuckDB), `scoring/normalize.py`, `scoring/business.py` (with missing-data policy), `reporting/` for L1 report + leaderboard + `benchmark_summary.json`.
-- Tests: CER/WER against hand-computed Japanese cases; normalization edge cases; scoring with missing/unsupported data; leaderboard rendering snapshot tests.
-- **⏸ HITL checkpoint 3:** `smoke` then `standard` L1-ASR for the 2 Phase-2 models; return bundles.
-- Exit: `leaderboard.{csv,json,html}` generated on Env A from returned bundles, clearly marked **partial (L1-ASR only)**.
+- Sản phẩm:
+  - `evaluators/ja_text.py`: chuẩn hoá NFKC, quy tắc dấu câu/khoảng trắng, thống nhất full/half-width, chính sách xử lý số; CER; WER qua fugashi + UniDic.
+  - `evaluators/asr_judge.py`: model ASR chốt phiên bản để chép lời audio đầu ra; mức lỗi nền của judge tính trên audio tham chiếu.
+  - Dataset đầu tiên: manifest `datasets/ja_asr_eval/v1` + `build.py` từ một tập con của corpus công khai có license.
+  - `vbench evaluate`, `vbench aggregate` (DuckDB), `scoring/normalize.py`, `scoring/business.py` (có chính sách dữ liệu thiếu), `reporting/` cho báo cáo L1 + leaderboard + `benchmark_summary.json`.
+- Test: CER/WER so với các ca tiếng Nhật tính tay; các trường hợp biên của chuẩn hoá; chấm điểm khi có dữ liệu thiếu/unsupported; snapshot test hiển thị leaderboard.
+- **⏸ HITL checkpoint 3:** chạy `smoke` rồi `standard` L1-ASR cho 2 model của Phase 2; gửi về các bundle.
+- Điều kiện hoàn thành: `leaderboard.{csv,json,html}` được tạo trên Env A từ bundle gửi về, ghi rõ **một phần (chỉ L1-ASR)**.
 
-### Phase 4 — Layer 1 Complete
+### Phase 4 — Hoàn thiện Lớp 1
 
-- Deliverables: intent, slot, understanding, keigo, long-context runners and evaluators; scenario datasets `ja_callcenter_intent_slot/v1`, `ja_keigo/v1`, `ja_long_context/v1` (synthetic, flagged); `evaluators/llm_judge.py` with versioned rubric prompts; keigo rule-based detector; human-labeled calibration subset workflow.
-- Tests: slot value normalization, keigo detector unit cases, judge response parsing and retry, calibration statistics (κ).
-- **⏸ HITL checkpoint 4:** `standard` L1 for 2 models; human labels for keigo calibration subset returned.
-- Exit: L1 report with judge agreement figures.
+- Sản phẩm: runner và evaluator cho intent, slot, hiểu, keigo, ngữ cảnh dài; các dataset kịch bản `ja_callcenter_intent_slot/v1`, `ja_keigo/v1`, `ja_long_context/v1` (synthetic, có gắn cờ); `evaluators/llm_judge.py` với prompt rubric có phiên bản; bộ phát hiện keigo theo luật; quy trình tập con hiệu chỉnh do người gán nhãn.
+- Test: chuẩn hoá giá trị slot, các ca kiểm thử bộ phát hiện keigo, parse và retry phản hồi judge, thống kê hiệu chỉnh (κ).
+- **⏸ HITL checkpoint 4:** `standard` L1 cho 2 model; gửi về nhãn người gán cho tập con hiệu chỉnh keigo.
+- Điều kiện hoàn thành: báo cáo L1 kèm số liệu độ đồng thuận của judge.
 
-### Phase 5 — Layer 3 Tool Calling
+### Phase 5 — Lớp 3 Tool Calling
 
-- Deliverables: `toolserver/` (booking, FAQ, CRM lookup, call transfer, structured output) with seedable state; tool JSON Schemas; scenario schema + `ja_toolcalling/v1` scenarios with expected traces and expected final state; prompted-JSON fallback protocol; L3 evaluators and report.
-- Tests: toolserver determinism, trace-vs-expected matcher (order-insensitive where allowed), hallucination detector, state comparator.
-- **⏸ HITL checkpoint 5:** `standard` L3 for 2 models.
-- Exit: L3 report; task completion rate per scenario category.
+- Sản phẩm: `toolserver/` (đặt lịch, FAQ, tra cứu CRM, chuyển cuộc gọi, structured output) với trạng thái đặt seed được; JSON Schema cho tool; schema kịch bản + kịch bản `ja_toolcalling/v1` kèm trace kỳ vọng và trạng thái cuối kỳ vọng; giao thức dự phòng JSON trong prompt; evaluator và báo cáo L3.
+- Test: tính tất định của toolserver, bộ so khớp trace với kỳ vọng (không phụ thuộc thứ tự khi được phép), bộ phát hiện hallucination, bộ so sánh trạng thái.
+- **⏸ HITL checkpoint 5:** `standard` L3 cho 2 model.
+- Điều kiện hoàn thành: báo cáo L3; task completion rate theo từng loại kịch bản.
 
-### Phase 6 — Layer 2 Realtime
+### Phase 6 — Lớp 2 Thời gian thực
 
-- Deliverables: `audio/streamer.py` (real-time paced 20 ms frames, drift-corrected), `audio/mixer.py` (barge-in / backchannel / noise injection at scripted offsets), harness-side VAD orchestrator for non-duplex models, event-timeline analyzers (TTFA, interrupt latency, barge-in success, false barge-in, turn-taking gaps), long-call stability runner, API RTT probe for GPT-Realtime.
-- Tests: pacing accuracy on CPU, timeline analyzers on synthetic timelines with known answers, orchestrator state machine.
-- **⏸ HITL checkpoint 6:** `standard` L2 for 2 models (includes a 10-minute stability call).
-- Exit: L2 report with P50/P95/P99 and native vs orchestrated tagging.
+- Sản phẩm: `audio/streamer.py` (frame 20 ms đúng nhịp thời gian thực, có bù trôi), `audio/mixer.py` (chèn barge-in / tiếng đệm / nhiễu tại thời điểm định sẵn), VAD orchestrator phía harness cho model không duplex, bộ phân tích timeline sự kiện (TTFA, độ trễ ngắt lời, barge-in thành công, barge-in sai, khoảng trống luân phiên lượt), runner kiểm tra ổn định cuộc gọi dài, bộ đo RTT API cho GPT-Realtime.
+- Test: độ chính xác nhịp gửi trên CPU, bộ phân tích timeline trên timeline synthetic có đáp án biết trước, state machine của orchestrator.
+- **⏸ HITL checkpoint 6:** `standard` L2 cho 2 model (có một cuộc gọi ổn định 10 phút).
+- Điều kiện hoàn thành: báo cáo L2 kèm P50/P95/P99 và tag native vs orchestrated.
 
-### Phase 7 — Layer 5 Infrastructure & TCO
+### Phase 7 — Lớp 5 Hạ tầng & TCO
 
-- Deliverables: `monitoring/nvml.py` sampler (background, 10 Hz, parquet), concurrency sweep runner with SLO-based stop, cost model reading `configs/cost/pricing.yaml` (user-supplied prices with `source` + `as_of`), TCO calculator, L5 report.
-- Tests: sampler with fake NVML, sweep stop logic, cost formulas.
-- **⏸ HITL checkpoint 7:** concurrency sweep for 2 models; operator supplies pricing inputs.
-- Exit: L5 report with max concurrent calls at SLO and cost per minute.
+- Sản phẩm: `monitoring/nvml.py` (chạy nền, 10 Hz, xuất parquet), runner quét mức đồng thời có điểm dừng theo SLO, mô hình chi phí đọc `configs/cost/pricing.yaml` (giá do người dùng cung cấp kèm `source` + `as_of`), bộ tính TCO, báo cáo L5.
+- Test: sampler với NVML giả, logic dừng khi quét, công thức chi phí.
+- **⏸ HITL checkpoint 7:** quét mức đồng thời cho 2 model; người vận hành cung cấp giá đầu vào.
+- Điều kiện hoàn thành: báo cáo L5 kèm số cuộc gọi đồng thời tối đa tại SLO và chi phí mỗi phút.
 
-### Phase 8 — Layer 4 Voice Quality
+### Phase 8 — Lớp 4 Chất lượng giọng nói
 
-- Deliverables: MOS proxy evaluators (pinned), speaker-consistency evaluator, pronunciation read-aloud set `ja_read_aloud/v1`, emotion prompts, `annotation/mos_app.py` (Gradio, blind, randomized, attention checks), `vbench mos export|serve|import`, proxy-vs-human calibration report.
-- Tests: MOS aggregation + CI, rater filtering by attention checks, blinding (no model id leaks into exported clip names).
-- **⏸ HITL checkpoint 8:** L4 collection run for 2 models; human raters complete MOS session; ratings CSV returned.
-- Exit: L4 report with human MOS + proxy correlation.
+- Sản phẩm: evaluator MOS proxy (chốt phiên bản), evaluator tính nhất quán giọng, bộ câu đọc phát âm `ja_read_aloud/v1`, prompt biểu cảm, `annotation/mos_app.py` (Gradio, chấm mù, ngẫu nhiên, có kiểm tra sự chú ý), `vbench mos export|serve|import`, báo cáo hiệu chỉnh proxy so với người chấm.
+- Test: tổng hợp MOS + CI, lọc người chấm theo kiểm tra sự chú ý, tính mù (không lộ model id trong tên clip xuất ra).
+- **⏸ HITL checkpoint 8:** run thu thập L4 cho 2 model; người chấm hoàn thành phiên MOS; gửi về file CSV điểm chấm.
+- Điều kiện hoàn thành: báo cáo L4 kèm MOS người chấm + tương quan với proxy.
 
-### Phase 9 — Remaining Adapters
+### Phase 9 — Các adapter còn lại
 
-- Deliverables: runtimes + adapters for MiniCPM-o 4.5, StepAudio 2.5 Realtime, GLM-4-Voice-9B, LLaMA-Omni 2, Baichuan-Omni-1.5 (each pinned to a specific revision found in its official repo/model card at implementation time); capability reports.
-- Tests: gateway conformance suite per runtime (against recorded fixtures).
-- **⏸ HITL checkpoint 9:** `smoke` per model; disk usage per model recorded.
-- Exit: all 7 models pass smoke, or failures documented with `not_measured` reason.
+- Sản phẩm: runtime + adapter cho MiniCPM-o 4.5, StepAudio 2.5 Realtime, GLM-4-Voice-9B, LLaMA-Omni 2, Baichuan-Omni-1.5 (mỗi model chốt một revision cụ thể lấy từ repo/model card chính thức tại thời điểm triển khai); capability report.
+- Test: bộ test tuân thủ gateway cho từng runtime (với fixture ghi sẵn).
+- **⏸ HITL checkpoint 9:** `smoke` cho từng model; ghi lại dung lượng đĩa của từng model.
+- Điều kiện hoàn thành: cả 7 model qua smoke, hoặc lỗi được ghi lại với lý do `not_measured`.
 
-### Phase 10 — Full Benchmark & Final Ranking
+### Phase 10 — Benchmark đầy đủ & Xếp hạng cuối
 
-- Deliverables: `scripts/run_all.sh` (prepare → serve → run full → evaluate → bundle → evict, per model, resumable), final report template (executive summary, per-layer results, deployment gates, sensitivity analysis of business weights, limitations).
-- **⏸ HITL checkpoint 10:** full profile for all 7 models; human MOS for all models.
-- Exit: `leaderboard.{csv,json,html}` + `benchmark_summary.json` from measured data only; analysis document reviewed.
+- Sản phẩm: `scripts/run_all.sh` (prepare → serve → run full → evaluate → bundle → evict, cho từng model, có thể tiếp tục khi gián đoạn), mẫu báo cáo cuối (tóm tắt điều hành, kết quả từng lớp, điều kiện triển khai, phân tích độ nhạy của trọng số kinh doanh, hạn chế).
+- **⏸ HITL checkpoint 10:** profile full cho cả 7 model; MOS người chấm cho mọi model.
+- Điều kiện hoàn thành: `leaderboard.{csv,json,html}` + `benchmark_summary.json` chỉ từ dữ liệu đo được; tài liệu phân tích đã review.
 
-### Phase 11 — Iteration
+### Phase 11 — Lặp cải tiến
 
-Driven by Phase 10 analysis: fix measurement issues, add dataset versions (e.g., more human-recorded audio), rescore with new anchor versions if the owner changes SLOs (old scores remain reproducible).
+Dựa trên phân tích của Phase 10: sửa vấn đề đo lường, thêm phiên bản dataset (ví dụ thêm audio giọng người thật), chấm điểm lại với phiên bản anchor mới nếu chủ dự án thay đổi SLO (điểm cũ vẫn tái lập được).
 
 ---
 
-## 5. Run Profiles
+## 5. Profile chạy
 
-| Profile | Purpose | Sample budget (target, per model) |
+| Profile | Mục đích | Số mẫu mục tiêu (mỗi model) |
 |---|---|---|
-| `smoke` | Verify pipeline + capabilities | ~10–20 samples across layers; minutes of GPU time |
-| `standard` | Per-layer development runs | a statistically usable subset per layer (size defined in `DATASET_SPEC.md`) |
-| `full` | Final ranking | full datasets, N repeats for stochastic metrics |
+| `mock_smoke` | Kiểm tra pipeline bằng mock adapter, chỉ CPU (đã có từ Phase 1) | 3 mẫu × 2 lớp |
+| `smoke` | Kiểm tra pipeline + năng lực | ~10–20 mẫu trên các lớp; vài phút GPU |
+| `standard` | Run phát triển cho từng lớp | tập con đủ dùng về mặt thống kê cho mỗi lớp (kích thước định nghĩa trong `DATASET_SPEC.md`) |
+| `full` | Xếp hạng cuối | toàn bộ dataset, lặp N lần cho metric có tính ngẫu nhiên |
 
-Exact sizes and GPU-time estimates are set after checkpoint 2, from **measured** smoke-run durations.
-
----
-
-## 6. Definition of Done (every phase)
-
-- [ ] Code has type hints, Pydantic models at boundaries, structured logging, no hardcoded paths/credentials.
-- [ ] Unit tests added; CI green; coverage ≥ 80%.
-- [ ] Docs updated (`METRIC_DEFINITIONS.md` for new metrics, `DATASET_SPEC.md` for new datasets, `DEPLOYMENT_GUIDE.md` for new commands).
-- [ ] Mock end-to-end run passes on Env A.
-- [ ] HITL checkpoint instructions written (commands, expected runtime, files to return).
-- [ ] No benchmark value appears anywhere that did not come from a returned bundle.
+Kích thước chính xác và ước tính thời gian GPU sẽ được đặt sau checkpoint 2, dựa trên thời gian chạy smoke **đo được**.
 
 ---
 
-## 7. Immediate Next Steps
+## 6. Định nghĩa hoàn thành (mọi phase)
 
-1. Reviewer approves or comments on `ARCHITECTURE.md` and this roadmap.
-2. Answer open questions in `ARCHITECTURE.md` §15 — the three blocking questions are resolved; the rest are handled in Phase 0b.
-3. Start Phase 0b (remaining specs), then Phase 1.
+- [ ] Code có type hint, model Pydantic ở các ranh giới, logging có cấu trúc, không hardcode đường dẫn/thông tin xác thực.
+- [ ] Có unit test; CI xanh; độ phủ ≥ 80%.
+- [ ] Cập nhật tài liệu (`METRIC_DEFINITIONS.md` cho metric mới, `DATASET_SPEC.md` cho dataset mới, `DEPLOYMENT_GUIDE.md` cho lệnh mới).
+- [ ] Mock run end-to-end chạy được trên Env A.
+- [ ] Viết hướng dẫn checkpoint HITL (lệnh, thời gian chạy dự kiến, file cần gửi về).
+- [ ] Đã merge vào `main` và push lên GitHub trước khi giao checkpoint.
+- [ ] Không có giá trị benchmark nào xuất hiện ở đâu mà không đến từ một bundle được gửi về.
+
+---
+
+## 7. Bước tiếp theo
+
+1. Người vận hành chạy checkpoint 1 trên GPU server (xem Phase 1 ở trên và `DEPLOYMENT_GUIDE.md` §6.2).
+2. Claude phân tích `env_report.json` + bundle mock, rồi bắt đầu Phase 2.
+3. Chủ dự án điền anchor/SLO trong `configs/scoring/anchors.yaml` trước Phase 3.

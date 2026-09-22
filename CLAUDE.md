@@ -1,171 +1,176 @@
-# AI Voice Benchmark Project
-## Mission
-Build a production-grade benchmark framework for evaluating Native Speech-to-Speech (Speech-to-Speech / Audio-to-Audio) AI models for Japanese AI Call Center deployment.
-This repository is focused on benchmarking, evaluation, reporting, and leaderboard generation.
-The objective is to identify the most suitable model for Japanese call center operations rather than finding the strongest research model.
+# Dự án AI Voice Benchmark
+## Sứ mệnh
+Xây dựng một framework benchmark cấp production để đánh giá các mô hình AI Speech-to-Speech bản địa (Speech-to-Speech / Audio-to-Audio) cho việc triển khai Tổng đài AI tiếng Nhật.
+Repository này tập trung vào benchmark, đánh giá, báo cáo và tạo bảng xếp hạng.
+Mục tiêu là xác định model phù hợp nhất cho vận hành tổng đài tiếng Nhật, chứ không phải tìm model nghiên cứu mạnh nhất.
 ---
-# Target Models
-## OSS Candidates
+# Các model mục tiêu
+## Ứng viên OSS
 - Qwen3-Omni-30B-A3B-FP8
 - MiniCPM-o 4.5
 - StepAudio 2.5 Realtime
 - GLM-4-Voice-9B
 - LLaMA-Omni 2
 - Baichuan-Omni-1.5
-## Commercial Baseline
+## Baseline thương mại
 - GPT-Realtime 2.1
 ---
-# Infrastructure
-## Environment A
-Developer Machine
-Capabilities:
+# Hạ tầng
+## Môi trường A
+Máy dev
+Khả năng:
 - Claude Code
 - Git
 - GitHub
-Limitations:
-- Cannot run GPU benchmarks
-- Cannot host large models
-- Cannot execute latency benchmarks
-Responsibilities:
-- Source code generation
-- Architecture design
-- Test framework generation
-- Analysis of benchmark results provided later by user
+Giới hạn:
+- Không chạy được benchmark GPU
+- Không host được model lớn
+- Không chạy được benchmark độ trễ
+Trách nhiệm:
+- Sinh source code
+- Thiết kế kiến trúc
+- Sinh framework test
+- Phân tích kết quả benchmark do người dùng cung cấp sau này
 ---
-## Environment B
-Transfer Machine
-Capabilities:
-- GitHub access
-- Upload source code to GPU server
-Responsibilities:
-- Download repository
-- Upload repository to benchmark server
+## Môi trường B
+Máy trung chuyển (máy công ty)
+Khả năng:
+- Truy cập GitHub
+- Upload source code lên GPU server
+Trách nhiệm:
+- Tải repository về
+- Upload repository lên benchmark server
 ---
-## Environment C
+## Môi trường C
 GPU Benchmark Server
-Specifications:
+Cấu hình:
 - Linux
 - 1x H100 80GB
-- 200GB SSD
-Responsibilities:
-- Execute benchmark workloads
-- Collect raw metrics
-- Generate benchmark artifacts
-Limitations:
-- Not directly controlled by Claude
+- SSD 200GB
+- Không có Docker (model chạy bằng vLLM trong `uv` venv riêng cho từng model)
+- Tải model trực tiếp từ Hugging Face được
+- Gọi OpenAI API được
+Trách nhiệm:
+- Chạy workload benchmark
+- Thu thập metric thô
+- Tạo artifact benchmark
+Giới hạn:
+- Claude không điều khiển trực tiếp
 ---
-# Human-In-The-Loop Requirement
-IMPORTANT:
-Claude never performs real GPU benchmarking.
-Claude never invents benchmark results.
-Claude never estimates benchmark results without evidence.
-When benchmark execution is required:
-1. Generate code.
-2. Stop.
-3. Ask user to execute benchmark.
-4. Wait for benchmark outputs.
-5. Analyze outputs.
-6. Improve framework.
-Accepted benchmark inputs:
+# Yêu cầu có con người tham gia (Human-In-The-Loop)
+QUAN TRỌNG:
+Claude không bao giờ tự chạy benchmark GPU thật.
+Claude không bao giờ bịa kết quả benchmark.
+Claude không bao giờ ước lượng kết quả benchmark khi không có bằng chứng.
+Khi cần chạy benchmark:
+1. Sinh code.
+2. Merge vào `main` và push lên GitHub (người dùng chỉ lấy code bằng cách tải từ GitHub về máy công ty).
+3. Dừng lại.
+4. Yêu cầu người dùng chạy benchmark.
+5. Chờ đầu ra benchmark.
+6. Phân tích đầu ra.
+7. Cải thiện framework.
+Mỗi lần cần người dùng kiểm thử thực tế trên máy công ty hoặc GPU server, Claude phải đưa source code và mọi thành phần cần review lên GitHub trước, và ghi rõ commit cần dùng.
+Đầu vào benchmark được chấp nhận:
 - csv
 - json
 - parquet
 - html
-- screenshots
-- benchmark logs
-- profiler outputs
+- ảnh chụp màn hình
+- log benchmark
+- output profiler
 ---
-# Benchmark Goal
-Evaluate models for Japanese AI Call Center deployment.
-Primary dimensions:
-1. Japanese language capability
-2. Conversational realtime performance
-3. Tool calling reliability
-4. Voice quality
-5. Infrastructure cost
+# Mục tiêu benchmark
+Đánh giá các model cho việc triển khai Tổng đài AI tiếng Nhật.
+Các chiều chính:
+1. Năng lực tiếng Nhật
+2. Hiệu năng hội thoại thời gian thực
+3. Độ tin cậy khi gọi công cụ (tool calling)
+4. Chất lượng giọng nói
+5. Chi phí hạ tầng
 ---
-# Benchmark Layers
-## Layer 1
-Japanese Capability Benchmark
-Evaluate:
+# Các lớp benchmark
+## Lớp 1
+Benchmark năng lực tiếng Nhật
+Đánh giá:
 - ASR
 - CER
 - WER
-- Intent Classification
-- Slot Extraction
-- Japanese Understanding
-- Keigo Compliance
-- Long Context Memory
+- Phân loại intent
+- Trích xuất slot
+- Hiểu tiếng Nhật
+- Tuân thủ keigo
+- Nhớ ngữ cảnh dài
 ---
-## Layer 2
-Realtime Voice Benchmark
-Evaluate:
+## Lớp 2
+Benchmark giọng nói thời gian thực
+Đánh giá:
 - Time To First Audio (TTFA)
-- Interrupt Latency
+- Độ trễ ngắt lời (Interrupt Latency)
 - Barge-In
-- Turn Taking
-- Duplex Interaction
-- Long Conversation Stability
+- Luân phiên lượt nói (Turn Taking)
+- Tương tác song công (Duplex Interaction)
+- Độ ổn định hội thoại dài
 ---
-## Layer 3
-Tool Calling Benchmark
-Evaluate:
-- Booking
+## Lớp 3
+Benchmark gọi công cụ
+Đánh giá:
+- Đặt lịch (Booking)
 - FAQ
-- CRM Lookup
-- Call Transfer
+- Tra cứu CRM
+- Chuyển cuộc gọi
 - Structured Output
-Metrics:
+Metric:
 - Tool Success Rate
 - JSON Accuracy
 - Hallucinated Tool Rate
 - Task Completion Rate
 ---
-## Layer 4
-Voice Quality Benchmark
-Evaluate:
+## Lớp 4
+Benchmark chất lượng giọng nói
+Đánh giá:
 - MOS
-- Naturalness
-- Accent Quality
-- Pronunciation
-- Emotional Expression
-- Consistency
-Human reviewers may be required.
+- Độ tự nhiên
+- Chất lượng ngữ điệu (accent)
+- Phát âm
+- Biểu cảm
+- Tính nhất quán
+Có thể cần người chấm.
 ---
-## Layer 5
-Infrastructure Benchmark
-Evaluate:
-- VRAM Usage
+## Lớp 5
+Benchmark hạ tầng
+Đánh giá:
+- Mức dùng VRAM
 - Throughput
-- Concurrent Calls
+- Số cuộc gọi đồng thời
 - GPU Utilization
-- Cost Per Call
-- Cost Per Minute
+- Chi phí mỗi cuộc gọi
+- Chi phí mỗi phút
 - TCO
 ---
-# Repository Rules
-Always prioritize:
-1. Reproducibility
-2. Automation
-3. Traceability
-4. Measurability
-Every benchmark run must be reproducible.
-Every metric must explain:
-- how measured
-- source data
-- timestamp
-- model version
+# Quy tắc repository
+Luôn ưu tiên:
+1. Khả năng tái lập
+2. Tự động hoá
+3. Khả năng truy vết
+4. Khả năng đo lường
+Mọi lần chạy benchmark phải tái lập được.
+Mọi metric phải giải thích được:
+- đo như thế nào
+- dữ liệu nguồn
+- thời điểm
+- phiên bản model
 ---
-# Development Principles
-Before implementing:
-1. Design architecture
-2. Create implementation plan
-3. Create benchmark spec
-4. Implement incrementally
-Do not write large amounts of code without architecture approval.
+# Nguyên tắc phát triển
+Trước khi triển khai:
+1. Thiết kế kiến trúc
+2. Lập kế hoạch triển khai
+3. Viết đặc tả benchmark
+4. Triển khai từng bước
+Không viết lượng code lớn khi kiến trúc chưa được duyệt.
 ---
-# Technology Stack
-Preferred:
+# Công nghệ
+Ưu tiên:
 - Python 3.11+
 - Typer
 - Pydantic
@@ -175,15 +180,15 @@ Preferred:
 - Polars
 - Plotly
 - DuckDB
-Optional:
+Tuỳ chọn:
 - Streamlit
 - Gradio
-Avoid:
-- Jupyter-only solutions
-- hardcoded credentials
-- hardcoded paths
+Tránh:
+- Giải pháp chỉ chạy trên Jupyter
+- Hardcode thông tin xác thực
+- Hardcode đường dẫn
 ---
-# Directory Structure
+# Cấu trúc thư mục
 artifacts/
     raw/
     processed/
@@ -196,59 +201,60 @@ docs/
 configs/
 scripts/
 ---
-# Required Outputs
-Every benchmark execution must generate:
+# Đầu ra bắt buộc
+Mọi lần chạy benchmark phải tạo ra:
 - CSV
 - JSON
-- HTML report
-Required artifacts:
+- Báo cáo HTML
+Artifact bắt buộc:
 leaderboard.csv
 leaderboard.json
 leaderboard.html
 benchmark_summary.json
 ---
-# Ranking Philosophy
-Never rank models by a single metric.
+# Triết lý xếp hạng
+Không bao giờ xếp hạng model chỉ bằng một metric.
 Business Score:
-35% Japanese Quality
-25% Task Completion
+35% Chất lượng tiếng Nhật
+25% Hoàn thành tác vụ
 15% Barge-In
-15% Cost
-10% Voice Quality
-Final ranking must be derived exclusively from measured benchmark results.
+15% Chi phí
+10% Chất lượng giọng nói
+Thứ hạng cuối cùng phải được suy ra hoàn toàn từ kết quả benchmark đo được.
 ---
-# Documentation Requirements
-Maintain:
+# Yêu cầu tài liệu
+Duy trì:
 docs/
-including:
+bao gồm:
 - ARCHITECTURE.md
 - IMPLEMENTATION_ROADMAP.md
 - DATASET_SPEC.md
 - METRIC_DEFINITIONS.md
 - DEPLOYMENT_GUIDE.md
+Ngôn ngữ tài liệu: tiếng Việt. Giữ nguyên tiếng Anh cho lệnh, tên file, tên metric, tên trường cấu hình và code. Source code (kể cả comment, docstring, log) viết bằng tiếng Anh.
 ---
-# Dataset Principles
-Never fabricate benchmark labels.
-Synthetic datasets must be clearly marked.
-Human-reviewed datasets must be stored separately.
-Japanese benchmark datasets must be versioned.
+# Nguyên tắc dataset
+Không bao giờ bịa nhãn benchmark.
+Dataset synthetic phải được đánh dấu rõ ràng.
+Dataset có người review phải lưu riêng.
+Dataset benchmark tiếng Nhật phải có phiên bản.
 ---
-# Coding Standards
-Use:
-- type hints
-- pydantic models
-- unit tests
-Target:
->= 80% test coverage
+# Chuẩn code
+Dùng:
+- type hint
+- model Pydantic
+- unit test
+Mục tiêu:
+>= 80% độ phủ test
 Logging:
-structured logging only
-No print-debugging in production code.
+chỉ dùng structured logging
+Không dùng print để debug trong code production.
 ---
-# Benchmark Execution Rule
-If benchmark execution requires GPU resources:
-Generate code.
-Generate commands.
-Generate deployment instructions.
-STOP.
-Wait for benchmark results from user.
-`
+# Quy tắc chạy benchmark
+Nếu benchmark cần tài nguyên GPU:
+Sinh code.
+Sinh lệnh.
+Sinh hướng dẫn triển khai.
+Merge vào `main` và push lên GitHub.
+DỪNG LẠI.
+Chờ kết quả benchmark từ người dùng.

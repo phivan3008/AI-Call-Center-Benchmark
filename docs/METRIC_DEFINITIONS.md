@@ -1,251 +1,253 @@
-# Metric Definitions
+# Định nghĩa Metric
 
-| Field | Value |
+| Trường | Giá trị |
 |---|---|
-| Status | **APPROVED** (2026-09-22) |
-| Version | 0.1.0 |
-| Date | 2026-09-21 |
-| Depends on | `docs/ARCHITECTURE.md` v0.2.0 |
+| Trạng thái | **ĐÃ DUYỆT** (2026-09-22) |
+| Phiên bản | 0.1.0 |
+| Ngày | 2026-09-21 |
+| Phụ thuộc | `docs/ARCHITECTURE.md` v0.2.0 |
 
-This document is the single source of truth for every metric the framework reports. Each metric's `method` field in a `MetricRecord` references an entry here (`metric_id` + evaluator version). A metric that is not defined here must not appear in any report.
+> Bản tiếng Việt. ID metric, đơn vị, tên trường và tên evaluator giữ nguyên tiếng Anh vì chúng khớp với code và file cấu hình.
+
+Tài liệu này là nguồn tham chiếu duy nhất cho mọi metric mà framework báo cáo. Trường `method` trong mỗi `MetricRecord` tham chiếu đến một mục ở đây (`metric_id` + phiên bản evaluator). Metric nào không được định nghĩa ở đây thì không được xuất hiện trong báo cáo.
 
 ---
 
-## 1. Conventions
+## 1. Quy ước
 
-### 1.1 Metric record fields
+### 1.1 Các trường của metric record
 
-Every metric produces `MetricRecord` rows (ARCHITECTURE §9.2). For each metric this document specifies:
+Mỗi metric tạo ra các dòng `MetricRecord` (ARCHITECTURE §9.2). Với mỗi metric, tài liệu này xác định:
 
-| Field | Meaning |
+| Trường | Ý nghĩa |
 |---|---|
-| **ID** | Stable identifier, `l<layer>.<group>.<name>` |
-| **Unit** | `ratio` (0–1), `ms`, `mb`, `score_1_5`, `usd`, `count`, … |
-| **Direction** | `↑` higher is better, `↓` lower is better |
-| **Level** | `sample` (one row per sample) and/or `aggregate` (computed in DuckDB from sample rows) |
-| **Source** | Raw artifact(s) the value is computed from |
-| **Evaluator** | Module that computes it (`benchmark/evaluators/...` or `benchmark/layers/...`) |
-| **Business dimension** | Which business-score dimension it feeds (or `report-only`) |
+| **ID** | Định danh ổn định, dạng `l<layer>.<group>.<name>` |
+| **Đơn vị** | `ratio` (0–1), `ms`, `mb`, `score_1_5`, `usd`, `count`, … |
+| **Chiều** | `↑` càng cao càng tốt, `↓` càng thấp càng tốt |
+| **Mức** | `sample` (một dòng cho mỗi mẫu) và/hoặc `aggregate` (tính trong DuckDB từ các dòng mẫu) |
+| **Nguồn** | Artifact thô dùng để tính giá trị |
+| **Evaluator** | Module tính toán (`benchmark/evaluators/...` hoặc `benchmark/layers/...`) |
+| **Nhóm business** | Nhóm business score mà metric đóng góp (hoặc `report-only` = chỉ báo cáo) |
 
-### 1.2 Status values
+### 1.2 Giá trị trạng thái
 
-| Status | Meaning | Value |
+| Trạng thái | Ý nghĩa | Giá trị |
 |---|---|---|
-| `measured` | Computed from raw artifacts | number |
-| `unsupported` | The model verifiably lacks the capability (capability report) | `null`; scores 0 in the business score, tagged |
-| `not_measured` | Not run, or run failed before producing the artifact | `null`; business score becomes `incomplete` |
-| `error` | Sample ran but failed (timeout, crash, invalid output) | `null` at sample level; **counted as a failure** in rate metrics (e.g., task completion), never silently dropped |
+| `measured` | Đã tính từ artifact thô | số |
+| `unsupported` | Model đã được xác minh là không có năng lực này (capability report) | `null`; được 0 điểm trong business score, có gắn tag |
+| `not_measured` | Chưa chạy, hoặc run lỗi trước khi tạo ra artifact | `null`; business score chuyển thành `incomplete` |
+| `error` | Mẫu đã chạy nhưng lỗi (timeout, crash, đầu ra không hợp lệ) | `null` ở mức mẫu; **tính là thất bại** trong các metric tỷ lệ (ví dụ task completion), không bao giờ âm thầm bị bỏ qua |
 
-### 1.3 Aggregation and uncertainty
+### 1.3 Tổng hợp và độ bất định
 
-- **Rates** are micro-averaged over samples unless stated otherwise.
-- **Latency** metrics report P50, P95, P99 using the linear-interpolation percentile (`numpy.percentile(method="linear")`), plus mean and count.
-- **95% confidence intervals** for every aggregate: non-parametric bootstrap, 2,000 resamples, resampling at the **sample (dialogue) level**, fixed seed recorded in the manifest. For multi-turn scenarios the resampling unit is the whole dialogue.
-- **Repeats:** stochastic metrics run `N` repeats per sample (`N` set in the run profile); repeat index is stored in the record's `tags.repeat`.
-- **Channel tag:** L1 text metrics are computed separately for `tags.channel = text` (model's text output, if the model has one) and `tags.channel = audio` (ASR-judge transcript of the output audio). The **audio channel is the one used for scoring**, because the caller hears audio; the text channel is report-only.
+- **Tỷ lệ** được tính micro-average trên các mẫu, trừ khi ghi khác.
+- **Độ trễ** báo cáo P50, P95, P99 dùng percentile nội suy tuyến tính (`numpy.percentile(method="linear")`), kèm trung bình và số lượng.
+- **Khoảng tin cậy 95%** cho mọi giá trị tổng hợp: bootstrap phi tham số, 2.000 lần lấy mẫu lại, lấy mẫu lại ở **mức mẫu (hội thoại)**, seed cố định được ghi trong manifest. Với kịch bản nhiều lượt, đơn vị lấy mẫu lại là cả hội thoại.
+- **Lặp lại:** metric có tính ngẫu nhiên được chạy `N` lần cho mỗi mẫu (`N` đặt trong run profile); chỉ số lần lặp lưu ở `tags.repeat` của record.
+- **Tag kênh:** metric text của L1 được tính riêng cho `tags.channel = text` (đầu ra text của model, nếu có) và `tags.channel = audio` (bản chép lời audio đầu ra do ASR judge tạo). **Kênh audio là kênh được dùng để chấm điểm**, vì người gọi nghe audio; kênh text chỉ để báo cáo.
 
-### 1.4 Japanese text normalization (`ja_norm_v1`)
+### 1.4 Chuẩn hoá text tiếng Nhật (`ja_norm_v1`)
 
-Applied to both reference and hypothesis before any text comparison, implemented in `evaluators/ja_text.py`:
+Áp dụng cho cả tham chiếu và giả thuyết trước mọi phép so sánh text, cài đặt trong `evaluators/ja_text.py`:
 
-1. Unicode NFKC (unifies full-width/half-width alphanumerics and katakana).
-2. Lowercase Latin letters.
-3. Remove punctuation and symbols: Unicode categories `P*` and `S*`, plus `・`, `ー` only when standing alone (long-vowel marks inside words are kept).
-4. Remove all whitespace.
-5. Numbers: no conversion between kanji numerals and digits in `ja_norm_v1` (both CER variants below make this explicit).
+1. Unicode NFKC (thống nhất chữ số/chữ Latin full-width/half-width và katakana).
+2. Chuyển chữ Latin về chữ thường.
+3. Bỏ dấu câu và ký hiệu: nhóm Unicode `P*` và `S*`, cộng thêm `・`, và `ー` chỉ khi đứng riêng (dấu kéo dài nguyên âm trong từ được giữ lại).
+4. Bỏ mọi khoảng trắng.
+5. Số: `ja_norm_v1` không chuyển đổi giữa chữ số kanji và chữ số Ả Rập (hai biến thể CER dưới đây làm rõ điều này).
 
-Two CER variants are reported:
+Báo cáo hai biến thể CER:
 
-| Variant | Additional step | Purpose |
+| Biến thể | Bước bổ sung | Mục đích |
 |---|---|---|
-| `cer_surface` | none | Strict, what a transcript shows |
-| `cer_kana` | Convert both sides to katakana reading with a pinned morphological analyzer (fugashi + UniDic, version recorded) | Removes kanji/kana orthographic variation (e.g., 御座います vs ございます), closer to "was it said correctly" |
+| `cer_surface` | không | Nghiêm ngặt, đúng như bản chép lời hiển thị |
+| `cer_kana` | Chuyển cả hai phía sang cách đọc katakana bằng bộ phân tích hình thái chốt phiên bản (fugashi + UniDic, có ghi phiên bản) | Loại bỏ khác biệt chính tả kanji/kana (ví dụ 御座います với ございます), gần với "có nói đúng không" hơn |
 
-`cer_kana` is the scored variant; `cer_surface` is report-only. Changes to normalization create `ja_norm_v2`; old results stay reproducible.
+`cer_kana` là biến thể được chấm điểm; `cer_surface` chỉ báo cáo. Thay đổi cách chuẩn hoá sẽ tạo ra `ja_norm_v2`; kết quả cũ vẫn tái lập được.
 
-### 1.5 Silence / audio activity definition (`vad_v1`)
+### 1.5 Định nghĩa im lặng / có tiếng (`vad_v1`)
 
-Used by L2 and L4. Output audio is resampled to 16 kHz mono and split into 10 ms frames. A frame is **active** if its RMS level is above `activity_threshold_dbfs` (config, default proposal −45 dBFS) — thresholds are config values recorded in the manifest, and a second, model-based VAD (Silero VAD, pinned) is run as a cross-check with disagreement reported.
+Dùng cho L2 và L4. Audio đầu ra được resample về 16 kHz mono và chia thành frame 10 ms. Một frame là **có tiếng (active)** nếu mức RMS lớn hơn `activity_threshold_dbfs` (cấu hình, mặc định đề xuất −45 dBFS). Ngưỡng là giá trị cấu hình được ghi trong manifest; một VAD dựa trên model (Silero VAD, chốt phiên bản) được chạy song song để đối chiếu và báo cáo mức bất đồng.
 
-### 1.6 Judges
+### 1.6 Judge (bộ chấm)
 
-- **ASR judge** (`asr_judge_v1`): a single pinned ASR model (candidate: Whisper large-v3 or a Japanese-specialized ASR; chosen in Phase 3, name + revision recorded). Its own error floor is measured by transcribing the **reference stimulus audio** and reported as `l1.asr.judge_floor_cer`.
-- **LLM judge** (`llm_judge_v1`): a pinned API model that is **not** one of the benchmarked models, temperature 0, rubric prompts versioned in `configs/prompts/ja/judges/`. Each judge call stores prompt, raw response and parsed label in raw artifacts. Judge agreement with human labels on a calibration subset is reported as Cohen's κ (`judge.<rubric>.kappa`); a rubric with κ below the configured minimum is flagged in reports.
+- **ASR judge** (`asr_judge_v1`): một model ASR duy nhất chốt phiên bản (ứng viên: Whisper large-v3 hoặc một ASR chuyên tiếng Nhật; chọn ở Phase 3, ghi tên + revision). Mức lỗi nền của chính nó được đo bằng cách chép lời **audio kích thích tham chiếu** và báo cáo là `l1.asr.judge_floor_cer`.
+- **LLM judge** (`llm_judge_v1`): một model API chốt phiên bản, **không** phải model đang benchmark, temperature 0, prompt rubric có phiên bản trong `configs/prompts/ja/judges/`. Mỗi lần gọi judge lưu prompt, phản hồi thô và nhãn đã parse vào artifact thô. Độ đồng thuận của judge với nhãn người trên tập con hiệu chỉnh được báo cáo bằng Cohen's κ (`judge.<rubric>.kappa`); rubric có κ thấp hơn ngưỡng tối thiểu cấu hình sẽ bị gắn cờ trong báo cáo.
 
 ---
 
-## 2. Layer 1 — Japanese Capability
+## 2. Lớp 1 — Năng lực tiếng Nhật
 
-| ID | Unit | Dir | Level | Definition | Source | Business dimension |
+| ID | Đơn vị | Chiều | Mức | Định nghĩa | Nguồn | Nhóm business |
 |---|---|---|---|---|---|---|
-| `l1.asr.cer` | ratio | ↓ | sample + aggregate | Character error rate of the model's transcription/repetition of the stimulus. Aggregate = Σ edit distance / Σ reference characters (micro). Variants via `tags.variant ∈ {kana, surface}`. | `output.flac` → ASR judge; `events.jsonl` text | Japanese Quality |
-| `l1.asr.wer` | ratio | ↓ | sample + aggregate | Word error rate on fugashi/UniDic tokens (surface forms). | same | report-only |
-| `l1.asr.judge_floor_cer` | ratio | ↓ | aggregate | ASR judge CER on reference stimulus audio (evaluator quality, not model quality). | stimulus audio | report-only |
-| `l1.language.ja_rate` | ratio | ↑ | aggregate | Share of responses whose ASR transcript is detected as Japanese (pinned language-ID, e.g., fastText lid, recorded). | ASR transcript | gate (see §8) |
-| `l1.intent.accuracy` | ratio | ↑ | aggregate | Exact match of predicted intent label to gold. Prediction is parsed from the model's response per the intent prompt protocol; unparseable = wrong. | response text / transcript | report-only |
-| `l1.intent.macro_f1` | ratio | ↑ | aggregate | Macro-averaged F1 over the closed intent set. | same | Japanese Quality |
-| `l1.slot.precision` / `.recall` | ratio | ↑ | aggregate | Slot-level micro precision/recall. A slot matches if name matches and normalized values are equal (§2.1). | same | report-only |
-| `l1.slot.f1` | ratio | ↑ | aggregate | Harmonic mean of the two above. | same | Japanese Quality |
-| `l1.understanding.accuracy` | ratio | ↑ | aggregate | Closed-form QA: exact match after normalization. Open-form QA: LLM judge label `correct` (rubric `understanding_v1`). Reported separately by `tags.form`. | transcript + judge | Japanese Quality |
-| `l1.keigo.compliance_rate` | ratio | ↑ | aggregate | Share of responses that (a) have zero violations from the rule detector **and** (b) are labelled `appropriate` by the LLM judge (rubric `keigo_v1`). | transcript + detector + judge | Japanese Quality |
-| `l1.keigo.rule_violation_rate` | ratio | ↓ | aggregate | Share of responses with ≥ 1 rule violation (casual forms such as plain-form sentence endings to the customer, forbidden expressions list; rule list versioned). | transcript | report-only |
-| `l1.long_context.recall_accuracy` | ratio | ↑ | aggregate | Share of probe questions answered correctly about facts stated earlier in the dialogue. Reported by `tags.distance_bucket` (turn distance: 1–3, 4–10, 11+). Overall = micro over all probes. | transcript + judge/exact | Japanese Quality |
+| `l1.asr.cer` | ratio | ↓ | sample + aggregate | Tỷ lệ lỗi ký tự khi model chép lại/nhắc lại câu kích thích. Tổng hợp = Σ khoảng cách chỉnh sửa / Σ số ký tự tham chiếu (micro). Biến thể qua `tags.variant ∈ {kana, surface}`. | `output.flac` → ASR judge; text trong `events.jsonl` | Chất lượng tiếng Nhật |
+| `l1.asr.wer` | ratio | ↓ | sample + aggregate | Tỷ lệ lỗi từ trên token fugashi/UniDic (dạng bề mặt). | như trên | report-only |
+| `l1.asr.judge_floor_cer` | ratio | ↓ | aggregate | CER của ASR judge trên audio kích thích tham chiếu (chất lượng của evaluator, không phải của model). | audio kích thích | report-only |
+| `l1.language.ja_rate` | ratio | ↑ | aggregate | Tỷ lệ câu trả lời có bản chép lời ASR được nhận diện là tiếng Nhật (bộ nhận diện ngôn ngữ chốt phiên bản, ví dụ fastText lid, có ghi lại). | bản chép lời ASR | điều kiện (xem §8) |
+| `l1.intent.accuracy` | ratio | ↑ | aggregate | Nhãn intent dự đoán khớp chính xác với nhãn chuẩn. Dự đoán được parse từ câu trả lời theo giao thức prompt intent; không parse được = sai. | text trả lời / bản chép lời | report-only |
+| `l1.intent.macro_f1` | ratio | ↑ | aggregate | F1 trung bình macro trên tập intent đóng. | như trên | Chất lượng tiếng Nhật |
+| `l1.slot.precision` / `.recall` | ratio | ↑ | aggregate | Precision/recall micro ở mức slot. Một slot khớp nếu tên khớp và giá trị sau chuẩn hoá bằng nhau (§2.1). | như trên | report-only |
+| `l1.slot.f1` | ratio | ↑ | aggregate | Trung bình điều hoà của hai giá trị trên. | như trên | Chất lượng tiếng Nhật |
+| `l1.understanding.accuracy` | ratio | ↑ | aggregate | Hỏi đáp dạng đóng: khớp chính xác sau chuẩn hoá. Dạng mở: LLM judge gán nhãn `correct` (rubric `understanding_v1`). Báo cáo tách riêng theo `tags.form`. | bản chép lời + judge | Chất lượng tiếng Nhật |
+| `l1.keigo.compliance_rate` | ratio | ↑ | aggregate | Tỷ lệ câu trả lời (a) không có vi phạm nào theo bộ phát hiện luật **và** (b) được LLM judge gán nhãn `appropriate` (rubric `keigo_v1`). | bản chép lời + bộ phát hiện + judge | Chất lượng tiếng Nhật |
+| `l1.keigo.rule_violation_rate` | ratio | ↓ | aggregate | Tỷ lệ câu trả lời có ≥ 1 vi phạm luật (dạng thân mật như kết câu thể thường với khách hàng, danh sách cách nói bị cấm; danh sách luật có phiên bản). | bản chép lời | report-only |
+| `l1.long_context.recall_accuracy` | ratio | ↑ | aggregate | Tỷ lệ câu hỏi kiểm tra được trả lời đúng về thông tin đã nêu trước đó trong hội thoại. Báo cáo theo `tags.distance_bucket` (khoảng cách lượt: 1–3, 4–10, 11+). Tổng = micro trên mọi câu hỏi kiểm tra. | bản chép lời + judge/khớp chính xác | Chất lượng tiếng Nhật |
 
-### 2.1 Slot value normalization (`slot_norm_v1`)
+### 2.1 Chuẩn hoá giá trị slot (`slot_norm_v1`)
 
-| Slot type | Normalized form |
+| Loại slot | Dạng chuẩn hoá |
 |---|---|
-| date | ISO `YYYY-MM-DD`, relative dates resolved against the scenario's fixed `reference_date` |
-| time | `HH:MM` 24h |
-| phone | digits only |
-| person name | `ja_norm_v1` + katakana reading (name readings compared, not kanji) |
-| number / count | integer |
-| free text | `ja_norm_v1` exact match |
+| date (ngày) | ISO `YYYY-MM-DD`, ngày tương đối được quy đổi theo `reference_date` cố định của kịch bản |
+| time (giờ) | `HH:MM` 24h |
+| phone (điện thoại) | chỉ giữ chữ số |
+| person name (tên người) | `ja_norm_v1` + cách đọc katakana (so sánh cách đọc tên, không so kanji) |
+| number / count (số) | số nguyên |
+| free text (văn bản tự do) | khớp chính xác sau `ja_norm_v1` |
 
 ---
 
-## 3. Layer 2 — Realtime Voice
+## 3. Lớp 2 — Giọng nói thời gian thực
 
-All times come from harness receipt/send timestamps (`time.monotonic_ns()`) in `events.jsonl`. OSS models are measured over localhost; GPT-Realtime includes the public network and carries `tags.network = internet` plus the measured `l2.network.rtt_ms`.
+Mọi thời điểm lấy từ mốc gửi/nhận của harness (`time.monotonic_ns()`) trong `events.jsonl`. Model OSS được đo qua localhost; GPT-Realtime có tính cả mạng internet công cộng, được gắn `tags.network = internet` và kèm `l2.network.rtt_ms` đo được.
 
-### 3.1 Reference time points
+### 3.1 Các mốc thời gian tham chiếu
 
-| Symbol | Definition |
+| Ký hiệu | Định nghĩa |
 |---|---|
-| `t_eos` | Send timestamp of the audio frame containing the last speech sample of the user turn. The last speech sample position is stored in the stimulus manifest (`speech_end_s`, computed once by `vad_v1` on the stimulus and human-spot-checked). |
-| `t_first_audio` | Receipt timestamp of the first `AudioDelta` whose content contains at least one **active** frame (§1.5). |
-| `t_bargein` | Send timestamp of the frame containing the barge-in onset (`bargein_onset_s` in the scenario). |
-| `t_gen_stop` | After `t_bargein`: receipt time of a `ResponseCancelled` event, or receipt time of the last `AudioDelta` containing an active frame, followed by ≥ `stop_silence_ms` (config) without active output — whichever is earlier. |
+| `t_eos` | Mốc gửi của frame audio chứa mẫu tiếng nói cuối cùng trong lượt người dùng. Vị trí mẫu tiếng nói cuối cùng lưu trong manifest kích thích (`speech_end_s`, tính một lần bằng `vad_v1` trên audio kích thích và có người kiểm tra ngẫu nhiên). |
+| `t_first_audio` | Mốc nhận của `AudioDelta` đầu tiên có ít nhất một frame **có tiếng** (§1.5). |
+| `t_bargein` | Mốc gửi của frame chứa điểm bắt đầu barge-in (`bargein_onset_s` trong kịch bản). |
+| `t_gen_stop` | Sau `t_bargein`: mốc nhận của event `ResponseCancelled`, hoặc mốc nhận của `AudioDelta` cuối cùng có frame có tiếng, sau đó ≥ `stop_silence_ms` (cấu hình) không có đầu ra có tiếng — lấy mốc nào sớm hơn. |
 
-Generated audio can arrive faster than real time and be buffered by a client, so **generation-stop latency** (what the model controls) is the scored metric. Perceived stop depends on client buffer flushing and is simulated as report-only (`l2.interrupt.perceived_ms`, playback buffer simulated at real time, flushed on `t_gen_stop`).
+Audio sinh ra có thể đến nhanh hơn thời gian thực và được client đệm lại, nên **độ trễ dừng sinh (generation-stop latency)** (phần model kiểm soát) là metric được chấm điểm. Thời điểm người nghe thực sự hết nghe thấy phụ thuộc cách client xả bộ đệm, được mô phỏng và chỉ báo cáo (`l2.interrupt.perceived_ms`; bộ đệm phát được mô phỏng theo thời gian thực, xả tại `t_gen_stop`).
 
-### 3.2 Metrics
+### 3.2 Metric
 
-| ID | Unit | Dir | Level | Definition | Business dimension |
+| ID | Đơn vị | Chiều | Mức | Định nghĩa | Nhóm business |
 |---|---|---|---|---|---|
-| `l2.ttfa_ms` | ms | ↓ | sample + P50/P95/P99 | `t_first_audio − t_eos`. Negative values (model starts before user ended) are kept and also counted in `l2.turn.premature_rate`. | Barge-In (P95) |
-| `l2.interrupt.latency_ms` | ms | ↓ | sample + P50/P95/P99 | `t_gen_stop − t_bargein`. If output never stops within `interrupt_timeout_ms`, sample = failure, value `null`, counted in success rate. | Barge-In (P95) |
-| `l2.interrupt.perceived_ms` | ms | ↓ | sample + percentiles | Simulated audible stop time − `t_bargein`. | report-only |
-| `l2.bargein.success_rate` | ratio | ↑ | aggregate | Share of barge-in trials where (a) `l2.interrupt.latency_ms ≤ interrupt_slo_ms` **and** (b) the next response addresses the interrupting utterance (LLM judge, rubric `bargein_followup_v1`). | Barge-In |
-| `l2.bargein.false_stop_rate` | ratio | ↓ | aggregate | Share of backchannel/noise injections (e.g., 「はい」「ええ」, cough, background noise) after which generation stops within `stop_silence_ms`. | Barge-In |
-| `l2.turn.gap_ms` | ms | — | distribution | Same as TTFA but over all turns of multi-turn dialogues; reported as a histogram. | report-only |
-| `l2.turn.premature_rate` | ratio | ↓ | aggregate | Share of turns where `t_first_audio < t_eos`, including stimuli with scripted mid-utterance pauses (the customer thinking). | report-only |
-| `l2.stream.rtf` | ratio | ↑ | sample + P5 | Real-time factor of streaming output: seconds of audio received / wall-clock seconds from first to last delta. Values < 1 cause audible stutter. | report-only |
-| `l2.stream.underrun_rate` | ratio | ↓ | aggregate | Share of responses where the simulated real-time playback buffer runs empty before the response ends. | report-only |
-| `l2.duplex.supported` | bool | — | model | From capability report (`native_full_duplex = verified`). Duplex-specific metrics (e.g., backchannel production) are defined in a later version. | report-only |
-| `l2.stability.ttfa_drift_ratio` | ratio | ↓ | per long call | P50 TTFA over the last 20% of turns / P50 TTFA over the first 20%. | report-only |
-| `l2.stability.error_rate` | ratio | ↓ | aggregate | Share of turns in long calls ending in `error` (timeout, disconnect, empty response). | gate (see §8) |
-| `l2.stability.vram_growth_mb` | mb | ↓ | per long call | NVML used memory at end − at start of the long call. | report-only |
-| `l2.network.rtt_ms` | ms | — | aggregate | Measured RTT to the API endpoint (GPT-Realtime only). | report-only |
+| `l2.ttfa_ms` | ms | ↓ | sample + P50/P95/P99 | `t_first_audio − t_eos`. Giá trị âm (model nói trước khi người dùng nói xong) được giữ lại và cũng được tính vào `l2.turn.premature_rate`. | Barge-In (P95) |
+| `l2.interrupt.latency_ms` | ms | ↓ | sample + P50/P95/P99 | `t_gen_stop − t_bargein`. Nếu đầu ra không dừng trong `interrupt_timeout_ms`, mẫu = thất bại, giá trị `null`, được tính trong tỷ lệ thành công. | Barge-In (P95) |
+| `l2.interrupt.perceived_ms` | ms | ↓ | sample + percentile | Thời điểm dừng nghe thấy (mô phỏng) − `t_bargein`. | report-only |
+| `l2.bargein.success_rate` | ratio | ↑ | aggregate | Tỷ lệ lần thử barge-in mà (a) `l2.interrupt.latency_ms ≤ interrupt_slo_ms` **và** (b) câu trả lời tiếp theo xử lý đúng câu ngắt lời (LLM judge, rubric `bargein_followup_v1`). | Barge-In |
+| `l2.bargein.false_stop_rate` | ratio | ↓ | aggregate | Tỷ lệ lần chèn tiếng đệm/nhiễu (ví dụ 「はい」「ええ」, tiếng ho, tiếng ồn nền) mà sau đó model dừng sinh trong `stop_silence_ms`. | Barge-In |
+| `l2.turn.gap_ms` | ms | — | phân bố | Giống TTFA nhưng trên mọi lượt của hội thoại nhiều lượt; báo cáo dạng histogram. | report-only |
+| `l2.turn.premature_rate` | ratio | ↓ | aggregate | Tỷ lệ lượt có `t_first_audio < t_eos`, gồm cả kích thích có khoảng ngập ngừng giữa câu (khách hàng đang suy nghĩ). | report-only |
+| `l2.stream.rtf` | ratio | ↑ | sample + P5 | Hệ số thời gian thực của đầu ra streaming: số giây audio nhận được / số giây đồng hồ từ delta đầu đến delta cuối. Giá trị < 1 gây giật tiếng. | report-only |
+| `l2.stream.underrun_rate` | ratio | ↓ | aggregate | Tỷ lệ câu trả lời mà bộ đệm phát mô phỏng theo thời gian thực bị cạn trước khi câu trả lời kết thúc. | report-only |
+| `l2.duplex.supported` | bool | — | model | Lấy từ capability report (`native_full_duplex = verified`). Metric riêng cho duplex (ví dụ tạo tiếng đệm) sẽ được định nghĩa ở phiên bản sau. | report-only |
+| `l2.stability.ttfa_drift_ratio` | ratio | ↓ | mỗi cuộc gọi dài | P50 TTFA của 20% lượt cuối / P50 TTFA của 20% lượt đầu. | report-only |
+| `l2.stability.error_rate` | ratio | ↓ | aggregate | Tỷ lệ lượt trong cuộc gọi dài kết thúc bằng `error` (timeout, mất kết nối, trả lời rỗng). | điều kiện (xem §8) |
+| `l2.stability.vram_growth_mb` | mb | ↓ | mỗi cuộc gọi dài | Bộ nhớ đã dùng theo NVML lúc kết thúc − lúc bắt đầu cuộc gọi dài. | report-only |
+| `l2.network.rtt_ms` | ms | — | aggregate | RTT đo được đến endpoint API (chỉ GPT-Realtime). | report-only |
 
-Every L2 record carries `tags.mode ∈ {native, orchestrated}` (ARCHITECTURE §6.3).
+Mọi record L2 đều có `tags.mode ∈ {native, orchestrated}` (ARCHITECTURE §6.3).
 
 ---
 
-## 4. Layer 3 — Tool Calling
+## 4. Lớp 3 — Tool Calling
 
-Source artifacts: `tool_trace.jsonl` (every tool call with raw arguments, schema validation result, backend response) and the toolserver's final state snapshot. Each scenario defines an expected tool trace and an expected final state (`DATASET_SPEC.md` §5).
+Artifact nguồn: `tool_trace.jsonl` (mọi lời gọi tool kèm tham số thô, kết quả kiểm tra schema, phản hồi của backend) và ảnh chụp trạng thái cuối của toolserver. Mỗi kịch bản định nghĩa một trace tool kỳ vọng và một trạng thái cuối kỳ vọng (`DATASET_SPEC.md` §5).
 
-| ID | Unit | Dir | Level | Definition | Business dimension |
+| ID | Đơn vị | Chiều | Mức | Định nghĩa | Nhóm business |
 |---|---|---|---|---|---|
-| `l3.task.completion_rate` | ratio | ↑ | aggregate | Share of scenarios whose final toolserver state equals the expected final state (state comparator, normalized values). Errors/timeouts count as failures. By `tags.category ∈ {booking, faq, crm_lookup, transfer, structured_output}`. | Task Completion (primary) |
-| `l3.tool.success_rate` | ratio | ↑ | aggregate | Share of emitted tool calls that are (a) to a defined tool, (b) schema-valid, and (c) accepted by the backend without error. | Task Completion |
-| `l3.json.schema_valid_rate` | ratio | ↑ | aggregate | Share of emitted tool calls whose arguments parse as JSON and validate against the tool's JSON Schema. | report-only |
-| `l3.json.arg_accuracy` | ratio | ↑ | aggregate | For expected calls that were matched to an emitted call: share of expected arguments whose normalized value equals the emitted value (`slot_norm_v1`). | Task Completion |
-| `l3.tool.hallucination_rate` | ratio | ↓ | aggregate | Share of emitted tool calls that (a) name an undefined tool, or (b) contain an argument value not grounded in the dialogue or earlier tool results (grounding check: value appears, after normalization, in user turns or tool outputs; ambiguous cases go to LLM judge rubric `grounding_v1`). | Task Completion (penalty) |
-| `l3.tool.missed_call_rate` | ratio | ↓ | aggregate | Share of expected calls with no matching emitted call. | report-only |
-| `l3.structured.exact_match` | ratio | ↑ | aggregate | Structured-output scenarios: normalized emitted JSON equals expected JSON exactly. | report-only |
+| `l3.task.completion_rate` | ratio | ↑ | aggregate | Tỷ lệ kịch bản có trạng thái cuối của toolserver bằng trạng thái cuối kỳ vọng (bộ so sánh trạng thái, giá trị đã chuẩn hoá). Lỗi/timeout tính là thất bại. Theo `tags.category ∈ {booking, faq, crm_lookup, transfer, structured_output}`. | Hoàn thành tác vụ (chính) |
+| `l3.tool.success_rate` | ratio | ↑ | aggregate | Tỷ lệ lời gọi tool (a) đến tool có định nghĩa, (b) hợp lệ theo schema, và (c) được backend chấp nhận không lỗi. | Hoàn thành tác vụ |
+| `l3.json.schema_valid_rate` | ratio | ↑ | aggregate | Tỷ lệ lời gọi tool có tham số parse được thành JSON và hợp lệ theo JSON Schema của tool. | report-only |
+| `l3.json.arg_accuracy` | ratio | ↑ | aggregate | Với các lời gọi kỳ vọng đã được ghép với một lời gọi thực tế: tỷ lệ tham số kỳ vọng có giá trị chuẩn hoá bằng giá trị thực tế (`slot_norm_v1`). | Hoàn thành tác vụ |
+| `l3.tool.hallucination_rate` | ratio | ↓ | aggregate | Tỷ lệ lời gọi tool (a) gọi tên tool không tồn tại, hoặc (b) có giá trị tham số không có căn cứ trong hội thoại hay kết quả tool trước đó (kiểm tra căn cứ: giá trị, sau chuẩn hoá, có xuất hiện trong lượt người dùng hoặc đầu ra tool; trường hợp mơ hồ chuyển cho LLM judge rubric `grounding_v1`). | Hoàn thành tác vụ (trừ điểm) |
+| `l3.tool.missed_call_rate` | ratio | ↓ | aggregate | Tỷ lệ lời gọi kỳ vọng không có lời gọi thực tế tương ứng. | report-only |
+| `l3.structured.exact_match` | ratio | ↑ | aggregate | Kịch bản structured output: JSON thực tế sau chuẩn hoá bằng đúng JSON kỳ vọng. | report-only |
 
-Matching emitted to expected calls: same tool name, then maximum argument overlap (Hungarian assignment). Order is ignored unless the scenario marks `ordered: true`.
+Ghép lời gọi thực tế với lời gọi kỳ vọng: cùng tên tool, sau đó chọn phương án trùng tham số nhiều nhất (thuật toán Hungarian). Bỏ qua thứ tự, trừ khi kịch bản đánh dấu `ordered: true`.
 
-`tags.tool_mode ∈ {native, prompted}` on every L3 record.
+Mọi record L3 đều có `tags.tool_mode ∈ {native, prompted}`.
 
 ---
 
-## 5. Layer 4 — Voice Quality
+## 5. Lớp 4 — Chất lượng giọng nói
 
-| ID | Unit | Dir | Level | Definition | Business dimension |
+| ID | Đơn vị | Chiều | Mức | Định nghĩa | Nhóm business |
 |---|---|---|---|---|---|
-| `l4.mos.human` | score_1_5 | ↑ | per clip + aggregate | Mean of ratings on a 5-point ACR scale (1 bad – 5 excellent) of overall quality, from raters passing attention checks. 95% CI by bootstrap over clips and raters. | Voice Quality (primary) |
-| `l4.naturalness.human` | score_1_5 | ↑ | same | 5-point naturalness rating. | Voice Quality |
-| `l4.accent.human` | score_1_5 | ↑ | same | 5-point rating of Japanese accent / pitch-accent correctness. | Voice Quality |
-| `l4.emotion.human` | score_1_5 | ↑ | same | 5-point appropriateness of emotional tone for the scripted situation (apology, empathy, cheerfulness). | Voice Quality |
-| `l4.mos.proxy.<predictor>` | score_1_5 | ↑ | per clip + aggregate | Automatic MOS predictor output (predictor name + version in `method`). Pearson/Spearman correlation vs `l4.mos.human` reported as `l4.mos.proxy.<predictor>.corr_human`. | fallback only (§7.3) |
-| `l4.pronunciation.cer` | ratio | ↓ | aggregate | `l1.asr.cer` (kana variant) on the read-aloud set: model instructed to say fixed text containing numbers, dates, names, business vocabulary. | Voice Quality |
-| `l4.consistency.speaker_sim` | ratio | ↑ | aggregate | Mean cosine similarity of speaker embeddings (pinned ECAPA-TDNN-class model) between each response and the model's per-session voice centroid; also across sessions. | Voice Quality |
-| `l4.rater.agreement` | ratio | ↑ | aggregate | Krippendorff's α of human ratings (evaluator quality). | report-only |
+| `l4.mos.human` | score_1_5 | ↑ | mỗi clip + aggregate | Trung bình điểm theo thang ACR 5 mức (1 tệ – 5 xuất sắc) cho chất lượng tổng thể, từ những người chấm vượt qua kiểm tra sự chú ý. CI 95% bằng bootstrap trên clip và người chấm. | Chất lượng giọng nói (chính) |
+| `l4.naturalness.human` | score_1_5 | ↑ | như trên | Điểm tự nhiên 5 mức. | Chất lượng giọng nói |
+| `l4.accent.human` | score_1_5 | ↑ | như trên | Điểm 5 mức cho độ chính xác ngữ điệu / pitch-accent tiếng Nhật. | Chất lượng giọng nói |
+| `l4.emotion.human` | score_1_5 | ↑ | như trên | Điểm 5 mức cho mức phù hợp của sắc thái cảm xúc với tình huống soạn sẵn (xin lỗi, đồng cảm, vui vẻ). | Chất lượng giọng nói |
+| `l4.mos.proxy.<predictor>` | score_1_5 | ↑ | mỗi clip + aggregate | Đầu ra của bộ dự đoán MOS tự động (tên + phiên bản bộ dự đoán ghi trong `method`). Tương quan Pearson/Spearman với `l4.mos.human` báo cáo ở `l4.mos.proxy.<predictor>.corr_human`. | chỉ dự phòng (§7.3) |
+| `l4.pronunciation.cer` | ratio | ↓ | aggregate | `l1.asr.cer` (biến thể kana) trên bộ câu đọc: model được yêu cầu nói câu cố định có số, ngày, tên, từ vựng nghiệp vụ. | Chất lượng giọng nói |
+| `l4.consistency.speaker_sim` | ratio | ↑ | aggregate | Trung bình độ tương đồng cosine của speaker embedding (model loại ECAPA-TDNN, chốt phiên bản) giữa mỗi câu trả lời và tâm giọng của model trong phiên; tính cả giữa các phiên. | Chất lượng giọng nói |
+| `l4.rater.agreement` | ratio | ↑ | aggregate | Krippendorff's α của điểm người chấm (chất lượng của việc chấm). | report-only |
 
-Human MOS protocol: blind, per-rater randomized order, model identity hidden in file names, each clip rated by ≥ `min_raters_per_clip` raters, anchor clips (high/low quality references) and attention-check clips included. Details in `DATASET_SPEC.md` §7.
+Quy trình MOS người chấm: chấm mù, thứ tự ngẫu nhiên riêng cho từng người chấm, tên file không lộ danh tính model, mỗi clip được ≥ `min_raters_per_clip` người chấm, có clip neo (tham chiếu chất lượng cao/thấp) và clip kiểm tra sự chú ý. Chi tiết ở `DATASET_SPEC.md` §7.
 
 ---
 
-## 6. Layer 5 — Infrastructure & TCO
+## 6. Lớp 5 — Hạ tầng & TCO
 
-NVML samples at 10 Hz (`monitoring/nvml.parquet`) with phase markers (`idle`, `single_call`, `concurrency_N`).
+Mẫu NVML lấy ở 10 Hz (`monitoring/nvml.parquet`) kèm mốc giai đoạn (`idle`, `single_call`, `concurrency_N`).
 
-| ID | Unit | Dir | Level | Definition | Business dimension |
+| ID | Đơn vị | Chiều | Mức | Định nghĩa | Nhóm business |
 |---|---|---|---|---|---|
-| `l5.vram.idle_mb` | mb | ↓ | model | Median NVML used memory in `idle` phase (model loaded, no traffic). | report-only |
-| `l5.vram.peak_mb` | mb | ↓ | per phase | Max NVML used memory in the phase. | gate (fits in 80 GB) |
-| `l5.gpu.util_mean` | ratio | — | per phase | Mean SM utilization. | report-only |
-| `l5.throughput.audio_rtf` | ratio | ↑ | per concurrency level | Total seconds of audio generated by all sessions / wall-clock seconds. | report-only |
-| `l5.concurrency.max_at_slo` | count | ↑ | model | Largest tested concurrency `N` (sweep 1, 2, 4, 8, …, then bisection between the last passing and first failing level) where, at `N` concurrent streaming calls: `l2.ttfa_ms` P95 ≤ `ttfa_p95_slo_ms`, `l2.stream.underrun_rate` ≤ `underrun_slo`, and error rate ≤ `error_rate_slo`. `0` if `N = 1` fails. | Cost (input) |
-| `l5.cost.per_minute_usd` | usd | ↓ | model | OSS: `gpu_hourly_usd / (60 × l5.concurrency.max_at_slo)`. API baseline: measured billed usage (input/output audio + text tokens from API usage fields) × `pricing.yaml` prices / call minutes. `null` with `not_measured` if max concurrency is 0 or prices are missing. | Cost (primary) |
-| `l5.cost.per_call_usd` | usd | ↓ | model | `l5.cost.per_minute_usd × mean call duration` of the standard scenario set (measured). | report-only |
-| `l5.tco.monthly_usd` | usd | ↓ | model | Configured TCO model: GPUs needed for `target_peak_concurrent_calls` (= ceil(target / max_at_slo)) × monthly GPU cost (amortized purchase or rental) + power + ops overhead, all from `pricing.yaml`. | report-only |
+| `l5.vram.idle_mb` | mb | ↓ | model | Trung vị bộ nhớ đã dùng theo NVML ở giai đoạn `idle` (model đã nạp, không có lưu lượng). | report-only |
+| `l5.vram.peak_mb` | mb | ↓ | mỗi giai đoạn | Bộ nhớ đã dùng lớn nhất theo NVML trong giai đoạn. | điều kiện (vừa 80 GB) |
+| `l5.gpu.util_mean` | ratio | — | mỗi giai đoạn | SM utilization trung bình. | report-only |
+| `l5.throughput.audio_rtf` | ratio | ↑ | mỗi mức đồng thời | Tổng số giây audio mọi phiên sinh ra / số giây đồng hồ. | report-only |
+| `l5.concurrency.max_at_slo` | count | ↑ | model | Mức đồng thời `N` lớn nhất đã thử (quét 1, 2, 4, 8, …, rồi chia đôi giữa mức đạt cuối cùng và mức trượt đầu tiên) mà tại `N` cuộc gọi streaming đồng thời: `l2.ttfa_ms` P95 ≤ `ttfa_p95_slo_ms`, `l2.stream.underrun_rate` ≤ `underrun_slo`, và tỷ lệ lỗi ≤ `error_rate_slo`. Bằng `0` nếu `N = 1` đã trượt. | Chi phí (đầu vào) |
+| `l5.cost.per_minute_usd` | usd | ↓ | model | OSS: `gpu_hourly_usd / (60 × l5.concurrency.max_at_slo)`. Baseline API: lượng sử dụng tính phí đo được (token audio/text vào/ra từ trường usage của API) × giá trong `pricing.yaml` / số phút gọi. `null` với `not_measured` nếu mức đồng thời tối đa là 0 hoặc thiếu giá. | Chi phí (chính) |
+| `l5.cost.per_call_usd` | usd | ↓ | model | `l5.cost.per_minute_usd × thời lượng cuộc gọi trung bình` của bộ kịch bản chuẩn (đo được). | report-only |
+| `l5.tco.monthly_usd` | usd | ↓ | model | Mô hình TCO cấu hình được: số GPU cần cho `target_peak_concurrent_calls` (= ceil(target / max_at_slo)) × chi phí GPU hàng tháng (khấu hao mua hoặc thuê) + điện + chi phí vận hành, tất cả từ `pricing.yaml`. | report-only |
 
-Every price input carries `source` and `as_of` in `configs/cost/pricing.yaml`; reports print them next to cost figures.
+Mọi giá đầu vào có `source` và `as_of` trong `configs/cost/pricing.yaml`; báo cáo in các giá trị này cạnh số liệu chi phí.
 
 ---
 
 ## 7. Business Score (`business_v1`)
 
-### 7.1 Normalization
+### 7.1 Chuẩn hoá
 
-Each input metric `m` is mapped to `s(m) ∈ [0, 1]` with a clipped linear function between two owner-defined anchors in `configs/scoring/anchors.yaml`:
+Mỗi metric đầu vào `m` được đưa về `s(m) ∈ [0, 1]` bằng hàm tuyến tính có cắt ngưỡng giữa hai anchor do chủ dự án đặt trong `configs/scoring/anchors.yaml`:
 
 ```
 direction ↑:  s = clip((m - worst) / (best - worst), 0, 1)
 direction ↓:  s = clip((worst - m) / (worst - best), 0, 1)
 ```
 
-Anchors are **business thresholds** (e.g., "TTFA P95 of X ms or better is perfect; Y ms or worse is unusable"), fixed and signed off **before** results are seen. For ratio metrics where 1.0 / 0.0 are natural, the defaults are `best = 1, worst = 0` (↑) or `best = 0, worst = 1` (↓) unless the owner overrides them.
+Anchor là **ngưỡng nghiệp vụ** (ví dụ "TTFA P95 từ X ms trở xuống là hoàn hảo; từ Y ms trở lên là không dùng được"), cố định và được ký duyệt **trước khi** thấy kết quả. Với metric tỷ lệ có biên tự nhiên 1.0 / 0.0, mặc định là `best = 1, worst = 0` (↑) hoặc `best = 0, worst = 1` (↓), trừ khi chủ dự án ghi đè.
 
-### 7.2 Dimensions and sub-weights
+### 7.2 Các nhóm và trọng số con
 
-Top-level weights are fixed by CLAUDE.md. Sub-weights are a **proposal** for the owner to confirm (stored in `configs/scoring/business_v1.yaml`).
+Trọng số cấp cao được cố định theo CLAUDE.md. Trọng số con là **đề xuất** để chủ dự án xác nhận (lưu trong `configs/scoring/business_v1.yaml`).
 
-| Dimension (weight) | Input metrics (proposed sub-weight) |
+| Nhóm (trọng số) | Metric đầu vào (trọng số con đề xuất) |
 |---|---|
-| Japanese Quality (35%) | `l1.asr.cer` kana (0.25), `l1.intent.macro_f1` (0.15), `l1.slot.f1` (0.15), `l1.understanding.accuracy` (0.15), `l1.keigo.compliance_rate` (0.20), `l1.long_context.recall_accuracy` (0.10) |
-| Task Completion (25%) | `l3.task.completion_rate` (0.60), `l3.tool.success_rate` (0.15), `l3.json.arg_accuracy` (0.15), `1 − l3.tool.hallucination_rate` (0.10) |
+| Chất lượng tiếng Nhật (35%) | `l1.asr.cer` kana (0.25), `l1.intent.macro_f1` (0.15), `l1.slot.f1` (0.15), `l1.understanding.accuracy` (0.15), `l1.keigo.compliance_rate` (0.20), `l1.long_context.recall_accuracy` (0.10) |
+| Hoàn thành tác vụ (25%) | `l3.task.completion_rate` (0.60), `l3.tool.success_rate` (0.15), `l3.json.arg_accuracy` (0.15), `1 − l3.tool.hallucination_rate` (0.10) |
 | Barge-In (15%) | `l2.interrupt.latency_ms` P95 (0.30), `l2.bargein.success_rate` (0.30), `l2.bargein.false_stop_rate` (0.15), `l2.ttfa_ms` P95 (0.25) |
-| Cost (15%) | `l5.cost.per_minute_usd` (1.00) |
-| Voice Quality (10%) | `l4.mos.human` (0.40), `l4.naturalness.human` (0.15), `l4.accent.human` (0.15), `l4.pronunciation.cer` (0.15), `l4.consistency.speaker_sim` (0.10), `l4.emotion.human` (0.05) |
+| Chi phí (15%) | `l5.cost.per_minute_usd` (1.00) |
+| Chất lượng giọng nói (10%) | `l4.mos.human` (0.40), `l4.naturalness.human` (0.15), `l4.accent.human` (0.15), `l4.pronunciation.cer` (0.15), `l4.consistency.speaker_sim` (0.10), `l4.emotion.human` (0.05) |
 
-`dimension_score = Σ sub_weight × s(metric)`; `business_score = Σ weight × dimension_score`, reported on a 0–100 scale.
+`dimension_score = Σ sub_weight × s(metric)`; `business_score = Σ weight × dimension_score`, báo cáo trên thang 0–100.
 
-TTFA is placed in the Barge-In dimension because CLAUDE.md defines no separate latency dimension and turn responsiveness is part of conversational interaction; this placement is a proposal for review.
+TTFA được xếp vào nhóm Barge-In vì CLAUDE.md không có nhóm độ trễ riêng, và khả năng phản hồi đúng lượt là một phần của tương tác hội thoại; vị trí này đã được duyệt.
 
-### 7.3 Missing inputs
+### 7.3 Đầu vào bị thiếu
 
-- A metric with status `unsupported` contributes `s = 0` (tagged).
-- A metric with status `not_measured` makes the model's business score `incomplete` (ARCHITECTURE §10.3). No re-weighting, no imputation.
-- **Voice Quality fallback:** if human MOS is not yet available for any model, the report may compute a *provisional* Voice Quality score using `l4.mos.proxy.<predictor>` instead of the human metrics — only if the predictor's `corr_human` has been measured on a calibration subset — and the whole leaderboard is labelled **provisional**.
+- Metric có trạng thái `unsupported` đóng góp `s = 0` (có gắn tag).
+- Metric có trạng thái `not_measured` làm business score của model thành `incomplete` (ARCHITECTURE §10.3). Không phân bổ lại trọng số, không tự điền giá trị.
+- **Dự phòng cho chất lượng giọng nói:** nếu chưa có MOS người chấm cho bất kỳ model nào, báo cáo có thể tính điểm Chất lượng giọng nói *tạm thời* bằng `l4.mos.proxy.<predictor>` thay cho metric người chấm — chỉ khi `corr_human` của bộ dự đoán đã được đo trên tập con hiệu chỉnh — và toàn bộ leaderboard được ghi nhãn **tạm thời (provisional)**.
 
-### 7.4 Ranking
+### 7.4 Xếp hạng
 
-Models with complete scores are ranked by `business_score`. The 95% CI of the business score comes from a joint bootstrap (resampling samples in every layer simultaneously). Adjacent models whose score difference has a CI that includes 0 are shown as tied. A sensitivity table re-ranks under ±10 percentage-point perturbations of each top-level weight (report-only, to show ranking robustness).
+Các model có điểm đầy đủ được xếp theo `business_score`. CI 95% của business score lấy từ bootstrap đồng thời (lấy mẫu lại ở mọi lớp cùng lúc). Hai model liền kề có CI của chênh lệch điểm chứa 0 được hiển thị là đồng hạng. Một bảng độ nhạy xếp hạng lại khi dịch chuyển ±10 điểm phần trăm từng trọng số cấp cao (chỉ báo cáo, để cho thấy độ vững của thứ hạng).
 
 ---
 
-## 8. Deployment Gates (report-only, not scored)
+## 8. Điều kiện triển khai (chỉ báo cáo, không tính điểm)
 
-| Gate | Pass condition |
+| Điều kiện | Điều kiện đạt |
 |---|---|
-| Fits hardware | `l5.vram.peak_mb` at `N = 1` ≤ 80 GB and model runs on 1x H100 |
-| Speaks Japanese | `l1.language.ja_rate` ≥ `ja_rate_gate` (anchors config) |
-| Stable | `l2.stability.error_rate` ≤ `stability_error_gate` |
-| License | Manual review field in model YAML: `commercial_use: allowed / restricted / unknown` |
+| Vừa phần cứng | `l5.vram.peak_mb` tại `N = 1` ≤ 80 GB và model chạy trên 1x H100 |
+| Nói tiếng Nhật | `l1.language.ja_rate` ≥ `ja_rate_gate` (cấu hình anchors) |
+| Ổn định | `l2.stability.error_rate` ≤ `stability_error_gate` |
+| License | Trường review thủ công trong YAML của model: `commercial_use: allowed / restricted / unknown` |
 
-A failed gate does not change the score; the leaderboard shows the model as "not deployable as benchmarked" with the failing gate listed.
+Không đạt điều kiện không làm thay đổi điểm; leaderboard hiển thị model là "không triển khai được như cấu hình đã benchmark" kèm điều kiện không đạt.

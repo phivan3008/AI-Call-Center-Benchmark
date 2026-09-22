@@ -1,27 +1,29 @@
-# Dataset Specification
+# Đặc tả Dataset
 
-| Field | Value |
+| Trường | Giá trị |
 |---|---|
-| Status | **APPROVED** (2026-09-22) |
-| Version | 0.1.0 |
-| Date | 2026-09-21 |
-| Depends on | `docs/ARCHITECTURE.md` v0.2.0, `docs/METRIC_DEFINITIONS.md` v0.1.0 |
+| Trạng thái | **ĐÃ DUYỆT** (2026-09-22) |
+| Phiên bản | 0.1.0 |
+| Ngày | 2026-09-21 |
+| Phụ thuộc | `docs/ARCHITECTURE.md` v0.2.0, `docs/METRIC_DEFINITIONS.md` v0.1.0 |
+
+> Bản tiếng Việt. Tên trường, tên dataset, giá trị enum và ví dụ JSON/YAML giữ nguyên vì khớp với code (`benchmark/core/schemas.py`).
 
 ---
 
-## 1. Principles
+## 1. Nguyên tắc
 
-1. **Never fabricate labels.** Labels come from (a) the source corpus, (b) construction — the scenario author writes the text *and* its intent/slots/expected tool calls together, or (c) human annotation. Labels are never produced by a benchmarked model or by an unreviewed LLM.
-2. **Synthetic data is always flagged.** Any audio produced by TTS, or text written for the benchmark rather than collected from real callers, has `synthetic: true` and a `generator` record.
-3. **Human-reviewed data lives separately** under `datasets/human_reviewed/`.
-4. **Versioned and immutable.** A published dataset version never changes; any change creates a new version. Each version has a `manifest.jsonl` whose SHA-256 is recorded in every run manifest.
-5. **Reproducible builds.** Each dataset has a `build.py` that recreates it from its sources (download + transform, or TTS render with pinned generator/voice/seed).
-6. **Audio is not committed to git.** Manifests, scripts, texts and datasheets are committed; audio is built on the GPU server with `vbench data prepare` and verified against manifest checksums.
-7. **Licenses are recorded per sample** and checked before inclusion. A source whose license has not been reviewed is `status: candidate` and cannot be used in a `full` run.
+1. **Không bao giờ bịa nhãn.** Nhãn đến từ (a) corpus nguồn, (b) quá trình soạn — người soạn kịch bản viết text *cùng lúc* với intent/slot/tool call kỳ vọng của nó, hoặc (c) người gán nhãn. Nhãn không bao giờ do model đang benchmark hay một LLM chưa được review tạo ra.
+2. **Dữ liệu synthetic luôn được gắn cờ.** Mọi audio do TTS tạo ra, hoặc text được viết riêng cho benchmark chứ không thu thập từ người gọi thật, đều có `synthetic: true` và bản ghi `generator` (nếu là TTS).
+3. **Dữ liệu có người review nằm riêng** trong `datasets/human_reviewed/`.
+4. **Có phiên bản và bất biến.** Một phiên bản dataset đã phát hành không bao giờ thay đổi; mọi thay đổi tạo phiên bản mới. Mỗi phiên bản có `manifest.jsonl`, và SHA-256 của file này được ghi vào mọi run manifest.
+5. **Build tái lập được.** Mỗi dataset có `build.py` tái tạo dataset từ nguồn (tải + biến đổi, hoặc render TTS với generator/giọng/seed đã chốt).
+6. **Audio không commit vào git.** Manifest, script, text và datasheet được commit; audio được build trên GPU server bằng `vbench data prepare` và kiểm tra với checksum trong manifest.
+7. **License được ghi cho từng mẫu** và kiểm tra trước khi đưa vào. Nguồn chưa được review license có `status: candidate` và không được dùng trong run `full`.
 
 ---
 
-## 2. Directory Layout
+## 2. Cấu trúc thư mục
 
 ```text
 datasets/
@@ -38,13 +40,13 @@ datasets/
   registry.yaml                 # all datasets, versions, status, manifest sha256
 ```
 
-Audio format: FLAC, mono, 16-bit. Native sample rate kept per source (16 kHz or 24 kHz); adapters resample to each model's required input rate, and the resampler (library + version) is recorded.
+Định dạng audio: FLAC, mono, 16-bit. Giữ nguyên sample rate gốc của từng nguồn (16 kHz hoặc 24 kHz); adapter resample về sample rate đầu vào mà từng model yêu cầu, và bộ resample (thư viện + phiên bản) được ghi lại.
 
 ---
 
-## 3. Manifest Schema (`manifest.jsonl`)
+## 3. Schema manifest (`manifest.jsonl`)
 
-Validated by a Pydantic model (`benchmark/core/schemas.py: DatasetSample`) and by CI lint.
+Được kiểm tra bằng model Pydantic (`benchmark/core/schemas.py: DatasetSample`) và bằng lint trong CI.
 
 ```json
 {
@@ -69,50 +71,52 @@ Validated by a Pydantic model (`benchmark/core/schemas.py: DatasetSample`) and b
 }
 ```
 
-| Field | Rule |
+| Trường | Quy tắc |
 |---|---|
-| `speech_start_s` / `speech_end_s` | Computed by `vad_v1` at build time; used for `t_eos` (METRIC_DEFINITIONS §3.1). A random 5% is human spot-checked; spot-check results are stored in `human_reviewed/`. |
-| `text_reading_kana` | From the source corpus if present; otherwise generated with the pinned analyzer and marked `reading_source: analyzer`. |
-| `generator` | Required when `synthetic: true`: `{ "type": "tts", "engine": "...", "version": "...", "voice": "...", "seed": 0, "params": {...} }`. For LLM-assisted text drafting (if ever used), the draft must be human-reviewed and `text_origin: llm_draft_human_reviewed` recorded. |
-| `channel` | `clean_16k`, `clean_24k`, or `telephone_8k` (see §6). |
+| `speech_start_s` / `speech_end_s` | Tính bằng `vad_v1` khi build; dùng để xác định `t_eos` (METRIC_DEFINITIONS §3.1). Kiểm tra ngẫu nhiên 5% bởi người; kết quả kiểm tra lưu trong `human_reviewed/`. |
+| `text_reading_kana` | Lấy từ corpus nguồn nếu có; nếu không thì tạo bằng bộ phân tích chốt phiên bản và ghi `reading_source: analyzer`. |
+| `generator` | Bắt buộc khi audio do TTS tạo (`speaker.synthetic_voice: true`): `{ "type": "tts", "engine": "...", "version": "...", "voice": "...", "seed": 0, "params": {...} }`. Nếu có dùng LLM hỗ trợ soạn text, bản nháp phải được người review và ghi `text_origin: llm_draft_human_reviewed`. |
+| `channel` | `clean_16k`, `clean_24k`, hoặc `telephone_8k` (xem §6). |
+
+Các quy tắc code đang kiểm tra: giọng TTS (`synthetic_voice: true`) bắt buộc `synthetic: true` và có `generator`; có `generator` thì bắt buộc `synthetic: true`; `speech_start_s ≤ speech_end_s ≤ duration_s`. Text soạn sẵn do người thật đọc là `synthetic: true` nhưng không cần `generator`.
 
 ---
 
-## 4. Datasets per Layer
+## 4. Dataset theo từng lớp
 
-Sizes are **design targets** for statistical usefulness, not results. `smoke` uses a fixed small subset of each.
+Kích thước là **mục tiêu thiết kế** để đủ ý nghĩa thống kê, không phải kết quả. `smoke` dùng một tập con nhỏ cố định của mỗi dataset.
 
-| Dataset | Layer | Content | Label origin | Synthetic | Target size (standard / full) |
+| Dataset | Lớp | Nội dung | Nguồn nhãn | Synthetic | Kích thước mục tiêu (standard / full) |
 |---|---|---|---|---|---|
-| `ja_asr_eval` | L1 | Read and spontaneous Japanese speech from public corpora | corpus transcripts | no | 200 / 1,000 utterances |
-| `ja_callcenter_intent_slot` | L1 | Customer utterances for call center intents with slots | construction | yes (text + TTS); human-recorded subset in `human_reviewed/` | 200 / 600 utterances |
-| `ja_understanding` | L1 | Spoken passages + questions (closed and open form) | construction | yes | 100 / 300 questions |
-| `ja_keigo` | L1 | Customer turns designed to elicit polite business responses (complaints, requests, apologies) | construction; calibration subset human-labelled | yes | 100 / 300 turns |
-| `ja_long_context` | L1 | Multi-turn dialogues with facts stated early and probed later | construction | yes | 20 / 60 dialogues |
-| `ja_realtime` | L2 | Turn-taking stimuli, mid-utterance pauses, barge-in, backchannel/noise injections, long calls | construction (timing is part of the scenario) | yes | 100 turns + 50 barge-ins + 50 false-barge-ins + 1 long call / 500 + 200 + 200 + 3 long calls |
-| `ja_toolcalling` | L3 | Scripted dialogues with expected tool trace and final state | construction | yes | 60 / 200 scenarios |
-| `ja_read_aloud` | L4 | Fixed texts with numbers, dates, names, business vocabulary | construction | text yes, no audio input needed beyond instruction | 50 / 150 prompts |
-| `ja_voice_prompts` | L4 | Situations requiring apology / empathy / cheerful tone | construction | yes | 30 / 90 prompts |
-| `mos_ratings` | L4 | Human MOS ratings | human | no | `human_reviewed/` only |
+| `ja_asr_eval` | L1 | Tiếng Nhật đọc và nói tự nhiên từ corpus công khai | transcript của corpus | không | 200 / 1.000 câu |
+| `ja_callcenter_intent_slot` | L1 | Câu nói của khách hàng theo intent tổng đài, có slot | soạn sẵn | có (text + TTS); tập con giọng người thật trong `human_reviewed/` | 200 / 600 câu |
+| `ja_understanding` | L1 | Đoạn văn dạng nói + câu hỏi (dạng đóng và mở) | soạn sẵn | có | 100 / 300 câu hỏi |
+| `ja_keigo` | L1 | Lượt khách hàng được thiết kế để cần câu trả lời lịch sự kiểu doanh nghiệp (phàn nàn, yêu cầu, xin lỗi) | soạn sẵn; tập con hiệu chỉnh do người gán nhãn | có | 100 / 300 lượt |
+| `ja_long_context` | L1 | Hội thoại nhiều lượt có thông tin nêu sớm và hỏi lại sau | soạn sẵn | có | 20 / 60 hội thoại |
+| `ja_realtime` | L2 | Kích thích luân phiên lượt, ngập ngừng giữa câu, barge-in, chèn tiếng đệm/nhiễu, cuộc gọi dài | soạn sẵn (thời điểm là một phần của kịch bản) | có | 100 lượt + 50 barge-in + 50 barge-in sai + 1 cuộc gọi dài / 500 + 200 + 200 + 3 cuộc gọi dài |
+| `ja_toolcalling` | L3 | Hội thoại soạn sẵn có trace tool kỳ vọng và trạng thái cuối | soạn sẵn | có | 60 / 200 kịch bản |
+| `ja_read_aloud` | L4 | Câu cố định có số, ngày, tên, từ vựng nghiệp vụ | soạn sẵn | text có; không cần audio đầu vào ngoài câu lệnh | 50 / 150 prompt |
+| `ja_voice_prompts` | L4 | Tình huống cần giọng xin lỗi / đồng cảm / vui vẻ | soạn sẵn | có | 30 / 90 prompt |
+| `mos_ratings` | L4 | Điểm MOS của người chấm | người | không | chỉ trong `human_reviewed/` |
 
-Intents v1 (closed set, may be extended in v2): `booking_new`, `booking_change`, `booking_cancel`, `order_status`, `faq_hours`, `faq_price`, `faq_access`, `account_lookup`, `complaint`, `request_operator`, `other`.
+Intent v1 (tập đóng, có thể mở rộng ở v2): `booking_new`, `booking_change`, `booking_cancel`, `order_status`, `faq_hours`, `faq_price`, `faq_access`, `account_lookup`, `complaint`, `request_operator`, `other`.
 
-### 4.1 Public corpus candidates for `ja_asr_eval`
+### 4.1 Corpus công khai ứng viên cho `ja_asr_eval`
 
-All start as `status: candidate`. License terms must be reviewed by the project owner and recorded in `DATASHEET.md` before use in a `full` run; nothing here is a legal conclusion.
+Tất cả bắt đầu với `status: candidate`. Điều khoản license phải được chủ dự án review và ghi vào `DATASHEET.md` trước khi dùng trong run `full`; tài liệu này không đưa ra kết luận pháp lý nào.
 
-| Candidate | Why | License review |
+| Ứng viên | Lý do | Review license |
 |---|---|---|
-| Common Voice (Japanese) | many speakers, read speech | pending |
-| JSUT / JVS | clean read speech, single and multi-speaker | pending |
-| ReazonSpeech (test subset) | broadcast-style, spontaneous | pending |
-| CSJ | spontaneous, academic | pending (paid license) |
+| Common Voice (tiếng Nhật) | nhiều người nói, giọng đọc | chưa |
+| JSUT / JVS | giọng đọc sạch, một và nhiều người nói | chưa |
+| ReazonSpeech (tập test) | kiểu phát thanh, nói tự nhiên | chưa |
+| CSJ | nói tự nhiên, học thuật | chưa (license trả phí) |
 
 ---
 
-## 5. Scenario Schema (L1 dialogues, L2, L3)
+## 5. Schema kịch bản (hội thoại L1, L2, L3)
 
-Scenarios are YAML, validated by Pydantic. User turns are fixed audio; they never depend on model output (ARCHITECTURE §7).
+Kịch bản là YAML, được kiểm tra bằng Pydantic. Lượt người dùng là audio cố định; không bao giờ phụ thuộc vào đầu ra của model (ARCHITECTURE §7).
 
 ```yaml
 scenario_id: ja_toolcalling.v1.booking_017
@@ -145,7 +149,7 @@ expected:
       - { date: "2026-10-06", name_reading: "ヤマダタロウ", phone: "09012345678", slot_in: afternoon }
 ```
 
-L2 scenario extensions:
+Phần mở rộng cho kịch bản L2:
 
 ```yaml
 events:
@@ -159,50 +163,50 @@ events:
     expected: { stop: false }
 ```
 
-Placeholder names/phones in scenarios are fictitious and must not belong to real people; phone numbers use a reserved/fictional pattern documented in `DATASHEET.md`.
+Tên/số điện thoại mẫu trong kịch bản là hư cấu và không được thuộc về người thật; số điện thoại dùng mẫu dành riêng/hư cấu được ghi trong `DATASHEET.md`.
 
 ---
 
-## 6. Stimulus Audio Conditions
+## 6. Điều kiện audio kích thích
 
-Call center audio is narrowband. Every synthetic and human-recorded stimulus is rendered in two channels, reported separately via `channel`:
+Audio tổng đài là băng hẹp. Mọi kích thích synthetic và giọng người thật được render thành hai kênh, báo cáo riêng qua trường `channel`:
 
-| Channel | Processing |
+| Kênh | Xử lý |
 |---|---|
-| `clean_16k` (or `clean_24k`) | as recorded/synthesized |
-| `telephone_8k` | band-limit 300–3400 Hz, resample to 8 kHz, G.711 μ-law encode/decode, then resample to the model's input rate; optional additive noise at configured SNR (noise source + SNR recorded) |
+| `clean_16k` (hoặc `clean_24k`) | như khi thu/tổng hợp |
+| `telephone_8k` | lọc dải 300–3400 Hz, resample về 8 kHz, mã hoá/giải mã G.711 μ-law, rồi resample về sample rate đầu vào của model; tuỳ chọn cộng nhiễu ở SNR cấu hình (ghi lại nguồn nhiễu + SNR) |
 
-Scoring uses `telephone_8k` as primary for L1–L3 (it matches deployment); `clean` is report-only. This is a proposal for review.
+Chấm điểm dùng `telephone_8k` làm kênh chính cho L1–L3 (khớp môi trường triển khai); `clean` chỉ báo cáo. Đề xuất này đã được duyệt.
 
 ---
 
-## 7. Human-Reviewed Data
+## 7. Dữ liệu có người review
 
-| Kind | Location | Required metadata |
+| Loại | Vị trí | Metadata bắt buộc |
 |---|---|---|
-| Human recordings of scenarios | `human_reviewed/<dataset>/<version>/audio/` | pseudonymous speaker ID, consent record reference (stored outside git), recording device, date |
-| Human labels (keigo calibration, VAD spot checks, judge calibration) | `human_reviewed/<dataset>/<version>/labels.jsonl` | pseudonymous annotator ID, date, guideline version |
-| MOS ratings | `human_reviewed/mos_ratings/<round>/ratings.csv` | rater ID (pseudonymous), clip ID (blinded), scale, timestamp, attention-check results, app version |
+| Bản thu giọng người thật cho kịch bản | `human_reviewed/<dataset>/<version>/audio/` | ID người nói (ẩn danh), tham chiếu đến bản ghi đồng ý (lưu ngoài git), thiết bị thu, ngày |
+| Nhãn do người gán (hiệu chỉnh keigo, kiểm tra ngẫu nhiên VAD, hiệu chỉnh judge) | `human_reviewed/<dataset>/<version>/labels.jsonl` | ID người gán nhãn (ẩn danh), ngày, phiên bản hướng dẫn gán nhãn |
+| Điểm MOS | `human_reviewed/mos_ratings/<round>/ratings.csv` | ID người chấm (ẩn danh), ID clip (đã làm mù), thang điểm, thời điểm, kết quả kiểm tra sự chú ý, phiên bản ứng dụng |
 
-MOS protocol: ACR 5-point scale; clip IDs are random and the model mapping is stored in a separate key file that raters never see; each rater gets an independent random order; ≥ `min_raters_per_clip` ratings per clip (proposal: 5 — owner to confirm based on rater availability); anchor clips (reference human speech, degraded speech) and attention checks are included; raters failing attention checks are excluded, and the exclusion is reported.
+Quy trình MOS: thang ACR 5 mức; ID clip là ngẫu nhiên và bảng ánh xạ sang model lưu trong một file khoá riêng mà người chấm không bao giờ thấy; mỗi người chấm có thứ tự ngẫu nhiên riêng; mỗi clip có ≥ `min_raters_per_clip` lượt chấm (đề xuất: 5 — chủ dự án xác nhận theo số người chấm có sẵn); có clip neo (giọng người tham chiếu, giọng bị làm xấu) và clip kiểm tra sự chú ý; người chấm không qua kiểm tra sự chú ý bị loại, và việc loại được báo cáo.
 
-No personal data of real callers is used. If real call recordings are ever added, that requires a separate privacy review and is out of scope for v1.
-
----
-
-## 8. Synthetic Audio Generation
-
-Open decision (ARCHITECTURE §15 Q1): which TTS engine(s) render scenario audio. Requirements for any choice:
-
-- License permits generating benchmark stimuli.
-- Multiple Japanese voices: target ≥ 6 voices, balanced by gender, recorded as `speaker.id`.
-- Deterministic or seed-controlled; engine + version + voice + params recorded in `generator`.
-- **Must not be the same system as a benchmarked model** (e.g., not GPT-Realtime / OpenAI TTS, not the TTS head of any candidate), to avoid giving any model in-distribution input.
-- Results are reported per stimulus source (`synthetic` vs `human_reviewed`) so any gap is visible.
+Không dùng dữ liệu cá nhân của người gọi thật. Nếu sau này thêm bản ghi cuộc gọi thật, cần một đợt review quyền riêng tư riêng và việc đó nằm ngoài phạm vi v1.
 
 ---
 
-## 9. Versioning and Registry
+## 8. Tạo audio synthetic
+
+Quyết định còn mở (ARCHITECTURE §15 câu 1): dùng TTS nào để render audio kịch bản. Yêu cầu với bất kỳ lựa chọn nào:
+
+- License cho phép tạo kích thích cho benchmark.
+- Nhiều giọng tiếng Nhật: mục tiêu ≥ 6 giọng, cân bằng giới tính, ghi ở `speaker.id`.
+- Tất định hoặc điều khiển được bằng seed; engine + phiên bản + giọng + tham số ghi trong `generator`.
+- **Không được là cùng hệ thống với một model đang benchmark** (ví dụ không dùng GPT-Realtime / OpenAI TTS, không dùng phần TTS của bất kỳ model ứng viên nào), để tránh cho model nào đó nhận đầu vào quen thuộc với phân bố của nó.
+- Kết quả được báo cáo theo nguồn kích thích (`synthetic` vs `human_reviewed`) để mọi chênh lệch đều hiện rõ.
+
+---
+
+## 9. Phiên bản và Registry
 
 `datasets/registry.yaml`:
 
@@ -215,4 +219,4 @@ Open decision (ARCHITECTURE §15 Q1): which TTS engine(s) render scenario audio.
   changelog: "Initial scenario set."
 ```
 
-Only `released` versions can be used in `standard` and `full` runs. `vbench data prepare` refuses to build a dataset whose built audio does not match `audio_sha256`.
+Chỉ các phiên bản `released` mới được dùng trong run `standard` và `full`. `vbench data prepare` từ chối build dataset nếu audio build ra không khớp `audio_sha256`.
