@@ -1,0 +1,18 @@
+{
+  "name": "fleurs_ja_smoke",
+  "version": "v1",
+  "source": "google/fleurs",
+  "revision": "70bb2e84b976b7e960aa89f1c648e09c59f894dd",
+  "license": "CC-BY-4.0",
+  "files": [
+    "data/ja_jp/test.tsv",
+    "data/ja_jp/audio/test.tar.gz"
+  ],
+  "selection": {
+    "n": 12,
+    "min_s": 2.0,
+    "max_s": 10.0,
+    "order": "file_name"
+  },
+  "speech_bounds_method": "stim_vad_v1 (adaptive energy threshold)"
+}

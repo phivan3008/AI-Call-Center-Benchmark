@@ -1,0 +1,20 @@
+# Overlay on vllm_omni/deploy/qwen3_omni_moe.yaml (v0.28.0): put all three stages on GPU 0.
+# The upstream config is verified on 2x H100 (stage 0 on cuda:0, stages 1+2 on cuda:1).
+# These memory fractions are an UNVERIFIED starting point: BF16 weights total ~70.5 GB
+# (HF file sizes), so KV-cache headroom is small. The smoke run measures whether it loads;
+# adjust here (or with --stage-overrides) based on the runtime log, never by guessing results.
+stages:
+  - stage_id: 0          # thinker
+    devices: "0"
+    gpu_memory_utilization: 0.78
+    max_num_seqs: 4
+    max_num_batched_tokens: 8192
+  - stage_id: 1          # talker
+    devices: "0"
+    gpu_memory_utilization: 0.1
+    max_num_seqs: 4
+    max_num_batched_tokens: 8192
+  - stage_id: 2          # code2wav
+    devices: "0"
+    gpu_memory_utilization: 0.06
+    max_num_seqs: 4

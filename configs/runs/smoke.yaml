@@ -1,0 +1,17 @@
+# Phase 2 smoke run: pipeline + capability checks on real human Japanese speech (FLEURS ja_jp,
+# CC-BY-4.0). Not scored. Build the dataset first: vbench data prepare --dataset fleurs_ja_smoke
+name: smoke
+description: Turn, tool-call and cancel checks on 12 FLEURS ja_jp utterances.
+layers: [L1, L2, L3]
+samples_per_layer: 1
+repeats: 1
+seed: 1234
+sample_timeout_s: 180
+frame_ms: 20
+input_sample_rate_hz: 16000
+dataset: fleurs_ja_smoke
+prompts: ja/smoke_v1
+tasks:
+  - {kind: turn, layer: L1, count: 8, prompt: turn}
+  - {kind: tool, layer: L3, count: 2, prompt: tool}
+  - {kind: cancel, layer: L2, count: 2, prompt: cancel, cancel_after_ms: 1000}

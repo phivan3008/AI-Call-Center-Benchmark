@@ -1,0 +1,31 @@
+# Commercial baseline via the OpenAI Realtime API (WebSocket).
+# api_model must be set to the exact model string of "GPT-Realtime 2.1" before any run;
+# runs are refused while it is null or OPENAI_API_KEY is missing (no key as of 2026-09-22).
+model_id: gpt-realtime
+display_name: GPT-Realtime (OpenAI Realtime API)
+license: proprietary (OpenAI API terms)
+commercial_use: allowed
+source: null
+runtime:
+  kind: remote_api
+realtime:
+  dialect: openai
+  url: wss://api.openai.com/v1/realtime
+  api_model: null
+  input_sample_rate_hz: 24000
+  output_sample_rate_hz: 24000
+  voice: null
+  auth_env: OPENAI_API_KEY
+capabilities:
+  native_full_duplex:
+    claimed: unknown
+  streaming_audio_output:
+    claimed: claimed
+    source: https://platform.openai.com/docs/guides/realtime
+  native_tool_calling:
+    claimed: claimed
+    source: https://platform.openai.com/docs/guides/realtime
+  text_output_channel:
+    claimed: claimed
+    source: https://platform.openai.com/docs/guides/realtime
+sampling: {}

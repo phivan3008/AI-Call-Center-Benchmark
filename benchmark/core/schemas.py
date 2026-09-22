@@ -164,7 +164,9 @@ class DatasetSample(_Strict):
     speaker: Speaker
     synthetic: bool
     generator: Generator | None = None
-    text_origin: Literal["corpus", "authored", "llm_draft_human_reviewed"] | None = None
+    text_origin: (
+        Literal["corpus", "authored", "llm_draft_human_reviewed", "llm_draft_unreviewed"] | None
+    ) = None
     source: SampleSource
     license: str
     split: str = "test"

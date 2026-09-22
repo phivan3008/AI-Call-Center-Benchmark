@@ -1,0 +1,41 @@
+# Qwen3-Omni-30B-A3B-Instruct, official BF16 weights on a single H100 (decision 2026-09-22).
+# Qwen publishes no official FP8 checkpoint; if BF16 does not fit in 80 GB, the fallback is a
+# self-made ModelOpt FP8 thinker checkpoint (vLLM-Omni docs: quantization/modelopt.md).
+model_id: qwen3-omni-30b-a3b
+display_name: Qwen3-Omni-30B-A3B-Instruct (BF16, 1x H100)
+license: "other (see model card: https://huggingface.co/Qwen/Qwen3-Omni-30B-A3B-Instruct)"
+commercial_use: unknown          # manual review pending
+source:
+  hub: huggingface
+  repo: Qwen/Qwen3-Omni-30B-A3B-Instruct
+  revision: 26291f793822fb6be9555850f06dfe95f2d7e695   # HF API, 2026-09-22; files total 70.53 GB
+runtime:
+  kind: vllm_omni
+  runtime_id: vllm_omni_0_28
+  port: 18001
+  deploy_config: configs/deploy/qwen3_omni_1gpu.yaml
+  # vLLM-Omni recipe: disable async chunking when using /v1/realtime.
+  serve_args: ["--omni", "--no-async-chunk", "--trust-remote-code"]
+  launch_timeout_s: 2400
+realtime:
+  dialect: vllm_omni
+  url: ws://127.0.0.1:18001/v1/realtime?duplex=0   # turn-based handler (duplex in Phase 6)
+  api_model: Qwen/Qwen3-Omni-30B-A3B-Instruct
+  input_sample_rate_hz: 16000
+  output_sample_rate_hz: 24000
+  voice: null                                       # model default (card lists Ethan, Chelsie, Aiden)
+capabilities:
+  native_full_duplex:
+    claimed: claimed
+    source: https://docs.vllm.ai/projects/vllm-omni/en/latest/serving/realtime_duplex_api/
+  streaming_audio_output:
+    claimed: claimed
+    source: https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/examples/online_serving/qwen3_omni/
+  native_tool_calling:
+    claimed: unknown
+  text_output_channel:
+    claimed: claimed
+    source: https://huggingface.co/Qwen/Qwen3-Omni-30B-A3B-Instruct
+sampling: {}                    # vLLM-Omni deploy-config defaults (recorded via deploy config hash)
+notes:
+  - "Official deploy config is verified on 2x H100; the 1-GPU overlay is unverified until the smoke run."

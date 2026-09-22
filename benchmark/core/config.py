@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -87,6 +87,18 @@ class Settings(BaseModel):
         )
 
 
+class TaskSpec(BaseModel):
+    """One block of samples in a profile (Phase 2: turn, tool and cancel checks)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["turn", "tool", "cancel"]
+    layer: Literal["L1", "L2", "L3", "L4", "L5"]
+    count: int = Field(gt=0)
+    prompt: str  # key in the profile's prompt file
+    cancel_after_ms: int = Field(default=1000, ge=0)
+
+
 class RunProfile(BaseModel):
     """A run profile (``configs/runs/<name>.yaml``)."""
 
@@ -102,6 +114,9 @@ class RunProfile(BaseModel):
     frame_ms: int = Field(default=20, gt=0)
     input_sample_rate_hz: int = Field(default=16000, gt=0)
     mock_only: bool = False
+    dataset: str | None = None  # dataset built by `vbench data prepare`
+    prompts: str | None = None  # configs/prompts/<path>.yaml
+    tasks: list[TaskSpec] = Field(default_factory=list)
 
 
 def load_yaml(path: Path) -> Any:

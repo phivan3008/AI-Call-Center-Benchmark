@@ -47,10 +47,10 @@ GPU Benchmark Server
 Cấu hình:
 - Linux
 - 1x H100 80GB
-- SSD 200GB
+- SSD 300GB, chỉ được dùng 200GB (`VBENCH_DISK_BUDGET_GB=200`)
 - Không có Docker (model chạy bằng vLLM trong `uv` venv riêng cho từng model)
 - KHÔNG kết nối được GitHub; code chỉ đến server bằng cách copy file từ máy công ty
-- Tải được từ PyPI và Hugging Face, gọi được OpenAI API
+- Tải được từ PyPI và Hugging Face, gọi được OpenAI API (hiện chưa có OPENAI_API_KEY)
 - Không có `.git`: truy vết code bằng BUILD_INFO.json trong gói release (`vbench release verify`)
 Trách nhiệm:
 - Chạy workload benchmark
@@ -237,6 +237,7 @@ Ngôn ngữ tài liệu: tiếng Việt. Giữ nguyên tiếng Anh cho lệnh, t
 ---
 # Nguyên tắc dataset
 Không bao giờ bịa nhãn benchmark.
+Nhóm không có người nói tiếng Nhật: ưu tiên dataset công khai do người bản ngữ tạo (FLEURS, MASSIVE, JMultiWOZ) và TTS cục bộ có cổng kiểm tra độ rõ tự động; text do Claude soạn phải ghi `llm_draft_unreviewed` (DATASET_SPEC §10).
 Dataset synthetic phải được đánh dấu rõ ràng.
 Dataset có người review phải lưu riêng.
 Dataset benchmark tiếng Nhật phải có phiên bản.

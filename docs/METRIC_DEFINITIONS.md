@@ -67,7 +67,9 @@ Báo cáo hai biến thể CER:
 
 ### 1.5 Định nghĩa im lặng / có tiếng (`vad_v1`)
 
-Dùng cho L2 và L4. Audio đầu ra được resample về 16 kHz mono và chia thành frame 10 ms. Một frame là **có tiếng (active)** nếu mức RMS lớn hơn `activity_threshold_dbfs` (cấu hình, mặc định đề xuất −45 dBFS). Ngưỡng là giá trị cấu hình được ghi trong manifest; một VAD dựa trên model (Silero VAD, chốt phiên bản) được chạy song song để đối chiếu và báo cáo mức bất đồng.
+**`stim_vad_v1` (ranh giới tiếng nói của audio kích thích).** Audio thu thật có mức âm lượng và tiếng nền rất khác nhau (các clip FLEURS có tiếng nền từ khoảng -95 đến -30 dBFS), nên ngưỡng cố định không dùng được. Với mỗi clip: tính dBFS của từng frame 10 ms, ngưỡng = max(min(max(P10 + 10 dB, P90 − 30 dB, −70 dBFS), P90 − 6 dB), −90 dBFS); `speech_start_s` / `speech_end_s` là biên của đoạn đầu tiên / cuối cùng có ≥ 3 frame liên tiếp vượt ngưỡng. Cài đặt: `benchmark/audio/pcm.py: speech_bounds`.
+
+**`vad_v1` (audio đầu ra của model).** Dùng cho L2 và L4. Audio đầu ra được resample về 16 kHz mono và chia thành frame 10 ms. Một frame là **có tiếng (active)** nếu mức RMS lớn hơn `activity_threshold_dbfs` (cấu hình, mặc định đề xuất −45 dBFS). Ngưỡng là giá trị cấu hình được ghi trong manifest; một VAD dựa trên model (Silero VAD, chốt phiên bản) được chạy song song để đối chiếu và báo cáo mức bất đồng.
 
 ### 1.6 Judge (bộ chấm)
 

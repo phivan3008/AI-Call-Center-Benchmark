@@ -1,0 +1,10 @@
+# Shared serving environment for models served by vLLM-Omni (Qwen3-Omni, MiniCPM-o 4.5).
+# Source: https://docs.vllm.ai/projects/vllm-omni/en/latest/getting_started/installation/gpu/
+# (vLLM-Omni 0.28.0 requires vLLM 0.28.0 and Python 3.12). Installed from PyPI on the server.
+runtime_id: vllm_omni_0_28
+python: "3.12"
+packages:
+  - vllm==0.28.0
+  - vllm-omni==0.28.0
+torch_backend: auto
+serve_command: [vllm, serve]

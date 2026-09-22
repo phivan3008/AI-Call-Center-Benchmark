@@ -1,0 +1,37 @@
+# MiniCPM-o 4.5 served by vLLM-Omni with its default single-GPU deploy config
+# (vllm_omni/deploy/minicpmo_4_5.yaml: "three-stage deploy on one large-memory GPU").
+model_id: minicpm-o-4_5
+display_name: MiniCPM-o 4.5
+license: apache-2.0             # HF card metadata, 2026-09-22
+commercial_use: unknown          # manual review pending
+source:
+  hub: huggingface
+  repo: openbmb/MiniCPM-o-4_5
+  revision: 503e754207c94da6bb26850b4469f367c9ea3582   # HF API, 2026-09-22; files total 20.05 GB
+runtime:
+  kind: vllm_omni
+  runtime_id: vllm_omni_0_28
+  port: 18002
+  deploy_config: null           # vLLM-Omni default for this model
+  serve_args: ["--omni", "--trust-remote-code"]
+  launch_timeout_s: 1800
+realtime:
+  dialect: vllm_omni
+  url: ws://127.0.0.1:18002/v1/realtime?duplex=0   # turn-based handler (duplex in Phase 6)
+  api_model: openbmb/MiniCPM-o-4_5
+  input_sample_rate_hz: 16000
+  output_sample_rate_hz: 24000
+  voice: null
+capabilities:
+  native_full_duplex:
+    claimed: claimed
+    source: https://docs.vllm.ai/projects/vllm-omni/en/latest/serving/realtime_duplex_api/
+  streaming_audio_output:
+    claimed: claimed
+    source: https://docs.vllm.ai/projects/vllm-omni/en/latest/serving/realtime_duplex_api/
+  native_tool_calling:
+    claimed: unknown
+  text_output_channel:
+    claimed: claimed
+    source: https://docs.vllm.ai/projects/vllm-omni/en/latest/serving/realtime_duplex_api/
+sampling: {}

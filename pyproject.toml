@@ -1,6 +1,6 @@
 [project]
 name = "ai-callcenter-benchmark"
-version = "0.1.1"
+version = "0.2.0"
 description = "Benchmark framework for native speech-to-speech models in Japanese AI call center deployment"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -11,6 +11,10 @@ dependencies = [
     "typer>=0.12",
     "zstandard>=0.22",
     "nvidia-ml-py>=12.535",
+    "numpy>=1.26",
+    "soxr>=0.3.7",
+    "websockets>=13.0",
+    "huggingface_hub>=0.24",
 ]
 
 [project.scripts]
@@ -47,7 +51,7 @@ strict = true
 packages = ["benchmark"]
 
 [[tool.mypy.overrides]]
-module = ["pynvml"]
+module = ["pynvml", "soxr"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

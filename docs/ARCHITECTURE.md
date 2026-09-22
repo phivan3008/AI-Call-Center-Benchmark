@@ -3,7 +3,7 @@
 | Trường | Giá trị |
 |---|---|
 | Trạng thái | **ĐÃ DUYỆT** (2026-09-21). v0.2.0: GPU server không có Docker, phục vụ model bằng vLLM trong `uv` venv riêng cho từng model. v0.3.0 (2026-09-22): GPU server không kết nối GitHub, code được đưa lên bằng gói release offline |
-| Phiên bản | 0.3.0 |
+| Phiên bản | 0.4.0 (2026-09-22: model OSS đầu tiên chạy qua vLLM-Omni realtime API, §6.1) |
 | Ngày | 2026-09-21 |
 | Phạm vi | Framework benchmark cho các mô hình Speech-to-Speech (S2S) bản địa, bài toán tổng đài tiếng Nhật |
 
@@ -37,7 +37,7 @@
 | C1 | Máy dev (Env A) không có GPU để benchmark | Mọi thứ ngoài inference của model phải chạy được trên CPU. Adapter `mock` cho phép test end-to-end không cần GPU. Chấm điểm/báo cáo chạy trên Env A từ artifact được gửi về. |
 | C2 | GPU server (Env C) do con người vận hành, không phải Claude | Việc thực thi được đóng gói thành một số ít lệnh CLI kèm bước kiểm tra trước (preflight). Kết quả được gom vào một file nén kèm checksum để gửi về. |
 | C3 | 1x H100 80GB | Benchmark **từng model một**. Không bao giờ có hai model cùng nằm trên GPU (trừ ASR/judge dùng để chấm, được nạp ở một giai đoạn riêng). |
-| C4 | SSD 200GB | Weights của model được tải, benchmark rồi xoá theo từng model. Dataset lưu audio gọn (FLAC mono 16 kHz / 24 kHz). Artifact thô được lọc/nén theo từng run. Kiểm tra dung lượng đĩa là một phần của preflight. |
+| C4 | SSD 300GB, được dùng 200GB | Weights của model được tải, benchmark rồi xoá theo từng model. Dataset lưu audio gọn (FLAC mono 16 kHz / 24 kHz). Artifact thô được lọc/nén theo từng run. Kiểm tra dung lượng đĩa là một phần của preflight. |
 | C5 | Các model có thư viện Python xung đột nhau | Mỗi model chạy trong **`uv` virtual environment riêng** (GPU server không có Docker) sau một giao thức mạng thống nhất. Harness không bao giờ import code của model. |
 | C7 | GPU server không kết nối được GitHub; code chỉ đến server bằng cách copy file từ máy công ty (hai chiều copy được mọi loại file); server vẫn truy cập PyPI, Hugging Face, OpenAI | Code được phát hành dưới dạng **gói release offline** (`.zip` + `.zip.sha256`) do GitHub Actions build từ một tag. `BUILD_INFO.json` trong gói ghi commit và SHA-256 từng file, thay cho `.git` làm nguồn truy vết trên server (§9.4). |
 | C6 | Không bịa kết quả / nhãn | Giá trị metric chỉ đến từ các `MetricRecord` do evaluator tính từ artifact thô. Thiếu dữ liệu = `null` kèm lý do, không bao giờ là 0 hay giá trị đoán. Dữ liệu synthetic được gắn cờ. Run mock không bao giờ được đưa vào leaderboard. |
@@ -209,6 +209,8 @@ sequenceDiagram
     H->>G: response.cancel (barge-in)
     G-->>H: response.cancelled
 ```
+
+**Cập nhật Phase 2 (2026-09-22):** vLLM-Omni 0.28 đã có sẵn WebSocket `/v1/realtime` theo event của OpenAI Realtime cho Qwen3-Omni và MiniCPM-o 4.5. Với hai model này, harness nói chuyện trực tiếp với vLLM-Omni, không cần gateway riêng; gateway chỉ cần cho các model vLLM-Omni không hỗ trợ (Phase 9). Chi tiết event: `docs/REALTIME_PROTOCOL.md`. Hai model dùng chung một venv `vllm_omni_0_28` (vllm==0.28.0, vllm-omni==0.28.0, Python 3.12).
 
 Giao thức được thiết kế có chủ đích theo cấu trúc event của OpenAI Realtime API, để baseline thương mại và các model OSS dùng chung một bộ từ vựng event. Với mỗi model OSS, gateway (`runtimes/<model>/server.py`) dịch giao thức này sang API inference gốc của model.
 
@@ -580,12 +582,15 @@ Script `scripts/run_all.sh` bọc vòng lặp cho từng model (prepare → serv
 - ~~Cô lập runtime~~ — Không có Docker. Model được phục vụ bằng vLLM trong `uv` venv riêng cho từng model (§6.1).
 - ~~Internet trên GPU server~~ — Server tải model trực tiếp từ Hugging Face.
 - ~~Truy cập GPT-Realtime~~ — Server gọi được OpenAI API; baseline chạy từ GPU server.
+- ~~Audio kích thích tiếng Nhật~~ (2026-09-22) — Nhóm không có người nói tiếng Nhật: dùng FLEURS (giọng người thật) + TTS cục bộ chọn ở Phase 3 + dữ liệu text công khai (MASSIVE, JMultiWOZ); xem DATASET_SPEC §10.
+- ~~Qwen3-Omni FP8~~ (2026-09-22) — Qwen không có checkpoint FP8 chính thức; dùng BF16 chính thức trên 1 H100, nếu không vừa thì tự tạo FP8 thinker bằng ModelOpt.
+- ~~Dung lượng đĩa~~ (2026-09-22) — SSD 300 GB, được dùng 200 GB (`VBENCH_DISK_BUDGET_GB=200`).
 - ~~Đưa code lên server~~ (2026-09-22) — Server không kết nối GitHub nhưng tải được từ PyPI/Hugging Face; code đi qua máy công ty dưới dạng gói release offline (C7, §9.4).
 
 Còn mở (trả lời trong Phase 0b và trước Phase 3):
 
 1. **Audio kích thích tiếng Nhật:** Được dùng TTS nào để tổng hợp audio kịch bản (license phải cho phép dùng cho benchmark), và nhóm có thu được một tập con giọng người thật không (bao nhiêu người nói/bao nhiêu giờ)?
-2. **Người chấm MOS:** Có bao nhiêu người chấm là người Nhật bản ngữ, và họ chấm được khoảng bao nhiêu clip?
+2. **Người chấm MOS:** Nhóm không có người nói tiếng Nhật. Thuê người chấm bên ngoài hay chỉ dùng MOS proxy (leaderboard provisional)? Quyết định trước Phase 8 (DATASET_SPEC §10.3).
 3. **LLM judge:** Model judge nào được chấp nhận (không được là model đang benchmark; cần quyền truy cập API)?
 4. **SLO / anchor:** Mục tiêu TTFA P95, độ trễ ngắt lời, chi phí tối đa chấp nhận được mỗi phút — các giá trị này quyết định việc chuẩn hoá và phải được chốt trước khi thấy kết quả.
 5. **Đầu vào chi phí:** Cơ sở tính giá GPU cho TCO (H100 sở hữu khấu hao hay giá thuê cloud).

@@ -54,7 +54,7 @@ Mỗi checkpoint dưới đây được đánh dấu **⏸ HITL**. Đến điể
 | 0a | Kiến trúc & lộ trình | không | tài liệu này, `ARCHITECTURE.md` |
 | 0b | Đặc tả | không | `DATASET_SPEC.md`, `METRIC_DEFINITIONS.md`, `DEPLOYMENT_GUIDE.md`, anchor chấm điểm |
 | 1 | Khung cốt lõi | ⏸ env check | khung package, config, provenance, logging, artifact, CLI, mock adapter, CI |
-| 2 | Model gateway + adapter đầu tiên | ⏸ smoke từng model | gateway protocol, runtime cho model OSS tham chiếu + GPT-Realtime, xác minh năng lực |
+| 2 | Realtime adapter + model đầu tiên | ⏸ smoke từng model | adapter realtime, runtime vLLM-Omni cho MiniCPM-o 4.5 + Qwen3-Omni, adapter GPT-Realtime, xác minh năng lực |
 | 3 | Lát cắt dọc: L1 ASR → leaderboard | ⏸ smoke L1 | L1 ASR/CER, evaluate, aggregate, chấm điểm, leaderboard (một phần) |
 | 4 | Hoàn thiện Lớp 1 | ⏸ standard L1 | intent, slot, hiểu, keigo, ngữ cảnh dài, hiệu chỉnh judge |
 | 5 | Lớp 3 tool calling | ⏸ standard L3 | toolserver, kịch bản, metric tool |
@@ -85,7 +85,7 @@ Phase 4–8 có thể đổi thứ tự sau Phase 3 nếu ưu tiên thay đổi;
   - `configs/scoring/anchors.yaml` + `business_v1.yaml` — **giá trị do chủ dự án đặt** (SLO), không phải Claude.
 - Điều kiện hoàn thành: đặc tả được duyệt; anchor được ký duyệt trước khi thấy bất kỳ kết quả nào.
 
-### Phase 1 — Khung cốt lõi (chỉ CPU) ✅ code / ⏸ đang chờ checkpoint 1
+### Phase 1 — Khung cốt lõi (chỉ CPU) ✅ (checkpoint 1 đạt 2026-09-22)
 
 - Sản phẩm:
   - `pyproject.toml` (Python 3.11+, `uv`), cấu hình `ruff`, `mypy`, `pytest`.
@@ -106,26 +106,28 @@ Phase 4–8 có thể đổi thứ tự sau Phase 3 nếu ưu tiên thay đổi;
   và gửi về output của `vbench release verify`, `env_report.json` cùng bundle mock (`<RUN_ID>.tar.zst` + `.SHA256SUMS`), chứng minh chuỗi thu thập → đóng gói → kiểm tra hoạt động trên server. Claude dùng kết quả này để chốt cấu trúc venv cho từng model, độ tương thích vLLM/CUDA và kế hoạch dùng đĩa.
 - Điều kiện hoàn thành: CI xanh, đã nhận và review env report.
 
-### Phase 2 — Model Gateway & Adapter đầu tiên
+### Phase 2 — Realtime adapter & model đầu tiên ✅ code / ⏸ đang chờ checkpoint 2
+
+Cập nhật 2026-09-22 sau khi tra tài liệu vLLM-Omni và nhận quyết định của chủ dự án:
+
+- vLLM-Omni 0.28 có sẵn WebSocket `/v1/realtime` kiểu OpenAI cho Qwen3-Omni và MiniCPM-o 4.5, nên **không cần gateway riêng** cho hai model này; gateway chỉ cần ở Phase 9 cho model vLLM-Omni không hỗ trợ.
+- Làm **cả hai** model ở Phase 2: MiniCPM-o 4.5 (cấu hình 1 GPU chính thức) và Qwen3-Omni-30B-A3B **BF16 chính thức** trên 1 H100 (cấu hình 1 GPU tự viết, chưa kiểm chứng).
+- Nhóm không có người nói tiếng Nhật: smoke dùng **FLEURS ja_jp** (giọng người thật, CC-BY-4.0).
+- Chưa có `OPENAI_API_KEY`: adapter GPT-Realtime đã viết và test bằng server giả lập; smoke GPT-Realtime hoãn đến khi có key và tên model API.
 
 - Sản phẩm:
-  - Đặc tả gateway protocol (`docs/GATEWAY_PROTOCOL.md`) + gateway server dùng chung (FastAPI WebSocket) cho mọi runtime.
-  - Runtime (`uv` venv + vLLM, dự phòng bằng code chính thức nếu vLLM không phục vụ được phần audio) cho **một model OSS tham chiếu** (đề xuất: Qwen3-Omni-30B-A3B-FP8) và adapter tương ứng.
-  - Adapter `openai_realtime.py` cho baseline GPT-Realtime (tên model + phiên bản API chốt trong config).
-  - `vbench model prepare|serve|evict`, health check, timeout khởi động.
-  - Profile `smoke`: ~10 câu tiếng Nhật ở turn mode + 2 ở streaming mode + 1 tool call + 1 barge-in, chỉ để kiểm tra năng lực và pipeline, không để chấm điểm.
-  - Xác minh năng lực: kết quả smoke ghi các trường `verified` vào một capability report (không tự động ghi vào YAML của model; phải review trước).
-- Test: bộ test tuân thủ gateway protocol chạy với mock runtime; unit test adapter với fixture WebSocket ghi sẵn.
-- **⏸ HITL checkpoint 2:**
-  ```bash
-  uv run vbench model prepare --model qwen3-omni-30b-a3b-fp8
-  uv run vbench model serve   --model qwen3-omni-30b-a3b-fp8
-  uv run vbench run --model qwen3-omni-30b-a3b-fp8 --profile smoke
-  uv run vbench run --model gpt-realtime --profile smoke
-  uv run vbench bundle create <run_id>   # for each run
-  ```
-  Gửi về: các bundle + dung lượng đĩa đo được của weights và venv.
-- Điều kiện hoàn thành: cả hai model chạy xong smoke; capability report đã review.
+  - `docs/REALTIME_PROTOCOL.md` + `benchmark/adapters/realtime.py` (dialect `vllm_omni` và `openai`, chấp nhận cả tên event mới và cũ).
+  - `benchmark/testing/fake_realtime.py`: server giả lập để test trên CPU.
+  - `configs/runtimes/vllm_omni_0_28.yaml` (vllm==0.28.0, vllm-omni==0.28.0, Python 3.12), `configs/models/{minicpm-o-4_5,qwen3-omni-30b-a3b,gpt-realtime}.yaml` (revision chốt cứng), `configs/deploy/qwen3_omni_1gpu.yaml`.
+  - `vbench model list|prepare|serve|status|stop|evict` (`benchmark/runtime/manager.py`): venv dùng chung, giới hạn đĩa 200 GB, khoá GPU, log server, `prepare_report.json` với dung lượng đo thực tế.
+  - `vbench data prepare --dataset fleurs_ja_smoke`: 12 câu FLEURS; build phải khớp manifest tham chiếu trong repo.
+  - Profile `smoke`: 8 câu turn (L1) + 2 câu tool call (L3) + 2 câu huỷ phản hồi (L2).
+  - `capability_report.json` trong mỗi run: ghi lại quan sát (streaming audio, kênh text, tool call, huỷ phản hồi), không tự sửa cấu hình.
+  - `vbench bundle create` tự đính kèm log server và `prepare_report.json`.
+  - `env check`: `OPENAI_API_KEY` chuyển thành cảnh báo; thêm kiểm tra giới hạn đĩa.
+- Test: adapter với server giả lập (turn, tool, huỷ, lỗi, từ chối session, tên event cũ, xác thực OpenAI), runner 3 loại tác vụ, capability report, bộ build FLEURS với dữ liệu giả, runtime manager với subprocess/HF giả, CLI end-to-end với server giả lập.
+- **⏸ HITL checkpoint 2:** xem hướng dẫn checkpoint trong tin nhắn bàn giao và `DEPLOYMENT_GUIDE.md` §6.3. Gửi về: 2 bundle (mỗi model một run smoke), hoặc log `runtime_<model>.log` nếu `model serve` lỗi, cùng output của `model prepare`.
+- Điều kiện hoàn thành: MiniCPM-o 4.5 chạy xong smoke; Qwen3-Omni chạy xong smoke hoặc có log lỗi rõ ràng (ví dụ hết bộ nhớ) để quyết định chuyển sang FP8; capability report đã review.
 
 ### Phase 3 — Lát cắt dọc: Lớp 1 ASR → Leaderboard
 

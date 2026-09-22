@@ -26,6 +26,7 @@ from benchmark.core.clock import Clock, SystemClock
 from benchmark.core.config import Settings
 from benchmark.core.provenance import capture_env, source_state
 from benchmark.core.schemas import EnvInfo
+from benchmark.runtime.manager import dir_size_bytes, disk_budget_gb
 
 Role = Literal["server", "dev"]
 
@@ -190,9 +191,26 @@ def run_env_check(
         reachable, detail = probe(url)
         checks.append(_check(f"network:{name}", reachable, detail, required=server))
 
-    for var, required in (("OPENAI_API_KEY", server), ("HF_TOKEN", False)):
+    # OPENAI_API_KEY is only needed for the GPT-Realtime baseline (and an OpenAI LLM judge);
+    # `vbench run --model gpt-realtime` refuses to start without it.
+    for var, purpose in (
+        ("OPENAI_API_KEY", "needed for GPT-Realtime runs"),
+        ("HF_TOKEN", "needed only for gated models"),
+    ):
         present = bool(env.get(var))
-        checks.append(_check(f"env:{var}", present, "present" if present else "missing", required))
+        detail = "present" if present else f"missing ({purpose})"
+        checks.append(_check(f"env:{var}", present, detail, False))
+
+    budget = disk_budget_gb(env)
+    used_gb = round(dir_size_bytes(settings.home) / 1024**3, 1)
+    checks.append(
+        _check(
+            "disk_budget",
+            used_gb <= budget,
+            f"VBENCH_HOME uses {used_gb} GB of the {budget:.0f} GB budget",
+            required=server,
+        )
+    )
 
     return EnvReport(
         role=role,

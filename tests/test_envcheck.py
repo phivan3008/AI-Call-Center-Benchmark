@@ -56,8 +56,11 @@ def test_server_role_is_strict(settings: Settings, monkeypatch: pytest.MonkeyPat
         settings, role="server", env={}, probe=lambda _: (False, "offline"), which=lambda _: None
     )
     assert not report.ok
-    for name in ("gpu", "nvidia_driver", "network:huggingface", "tool:uv", "env:OPENAI_API_KEY"):
+    for name in ("gpu", "nvidia_driver", "network:huggingface", "tool:uv"):
         assert _status(report, name) is CheckStatus.FAIL
+    # The OpenAI key is optional (only GPT-Realtime runs need it; none exists yet).
+    assert _status(report, "env:OPENAI_API_KEY") is CheckStatus.WARN
+    assert _status(report, "disk_budget") is CheckStatus.PASS
     assert _status(report, "tool:ffmpeg") is CheckStatus.WARN
     assert _status(report, "env:HF_TOKEN") is CheckStatus.WARN
 

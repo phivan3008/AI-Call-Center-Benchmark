@@ -47,10 +47,16 @@ def test_mock_run_bundle_and_verify(tmp_path: Path) -> None:
     assert summary["run_id"] == run_id
 
 
-def test_real_models_not_available_in_phase_1() -> None:
-    result = runner.invoke(app, ["run", "--model", "qwen3-omni", "--profile", "mock_smoke"])
+def test_unknown_model_lists_known_models() -> None:
+    result = runner.invoke(app, ["run", "--model", "no-such-model", "--profile", "smoke"])
     assert result.exit_code == 2
-    assert "Phase 2" in result.output
+    assert "minicpm-o-4_5" in result.output
+
+
+def test_mock_only_profile_rejects_real_models() -> None:
+    result = runner.invoke(app, ["run", "--model", "minicpm-o-4_5", "--profile", "mock_smoke"])
+    assert result.exit_code == 2
+    assert "mock-only" in result.output
 
 
 def test_unknown_profile() -> None:

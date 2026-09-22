@@ -20,6 +20,7 @@ Xác định model tốt nhất để triển khai production cho các tình hu�
 | [docs/METRIC_DEFINITIONS.md](docs/METRIC_DEFINITIONS.md) | Định nghĩa và công thức của từng metric |
 | [docs/DATASET_SPEC.md](docs/DATASET_SPEC.md) | Đặc tả dataset, manifest, kịch bản |
 | [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) | Hướng dẫn vận hành trên GPU server (từng bước) |
+| [docs/REALTIME_PROTOCOL.md](docs/REALTIME_PROTOCOL.md) | Giao thức realtime giữa harness và model (vLLM-Omni, OpenAI) |
 
 ---
 
@@ -38,7 +39,7 @@ uv run vbench bundle verify bundles/<RUN_ID>.tar.zst   # kiểm tra bundle
 
 Trên GPU server (không kết nối GitHub): tải gói release `.zip` + `.zip.sha256` từ trang [Releases](https://github.com/phivan3008/AI-Call-Center-Benchmark/releases) trên máy công ty, copy lên server, rồi làm theo [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) §6.
 
-Trạng thái hiện tại: Phase 1 (khung cốt lõi, mock adapter) đã xong; đang chờ checkpoint 1 trên GPU server. Các model thật được thêm từ Phase 2.
+Trạng thái hiện tại: Phase 2 (adapter realtime, runtime vLLM-Omni cho MiniCPM-o 4.5 và Qwen3-Omni, bộ smoke FLEURS) đã xong code; đang chờ checkpoint 2 trên GPU server.
 
 ---
 

@@ -93,6 +93,7 @@ HF_HOME=${VBENCH_HOME}/hf_cache
 HF_TOKEN=...                 # only if a gated model requires it
 OPENAI_API_KEY=...           # GPT-Realtime baseline and LLM judge (if an OpenAI model is chosen as judge)
 VBENCH_LOG_LEVEL=INFO
+VBENCH_DISK_BUDGET_GB=200    # usable share of the 300 GB SSD
 ```
 
 Thay `/path/to/benchmark_ssd/vbench` bằng đường dẫn thật trên SSD. `HF_TOKEN` chỉ cần khi một model yêu cầu đăng nhập (gated model).
@@ -183,18 +184,40 @@ Với `--role server` (mặc định), các mục bắt buộc gồm:
 
 ### 6.3 Chạy cho từng model (có từ Phase 2)
 
+Các lệnh quản lý model:
+
+| Lệnh | Việc làm |
+|---|---|
+| `uv run vbench model list` | Liệt kê model đã cấu hình |
+| `uv run vbench data prepare --dataset <tên>` | Tải dữ liệu (revision chốt cứng) và build audio; kết quả phải khớp manifest trong repo |
+| `uv run vbench model prepare --model <id>` | Tạo venv runtime (tải thư viện từ PyPI) và tải weights (Hugging Face) đúng revision; kiểm tra giới hạn đĩa 200 GB trước khi tải; ghi `prepare_report.json` với dung lượng **đo thực tế** |
+| `uv run vbench model serve --model <id>` | Chạy server model ở nền, chờ đến khi `/health` trả lời; ghi log vào `$VBENCH_HOME/logs/runtime_<id>.log`; khoá GPU |
+| `uv run vbench model status --model <id>` | Đã prepare chưa, có đang chạy và khoẻ không |
+| `uv run vbench model stop --model <id>` | Dừng server, mở khoá GPU |
+| `uv run vbench model evict --model <id>` | Dừng server và xoá weights để giải phóng đĩa (`--with-runtime` xoá cả venv dùng chung) |
+| `uv run vbench run --model <id> --profile smoke` | Chạy benchmark; model phải đang được serve (trừ GPT-Realtime) |
+
+Quy trình cho một model:
+
 ```bash
-MODEL=qwen3-omni-30b-a3b-fp8
-uv run vbench data prepare --profile smoke
-uv run vbench model prepare --model $MODEL
-uv run vbench model serve   --model $MODEL        # starts vLLM/official server + gateway, waits for health
-uv run vbench run --model $MODEL --profile smoke  # prints RUN_ID
-uv run vbench evaluate $RUN_ID --evaluators gpu   # stops the model server first, then loads evaluator models
-uv run vbench bundle create $RUN_ID
-uv run vbench model evict --model $MODEL          # only when done with this model
+MODEL=minicpm-o-4_5
+uv run vbench model prepare --model $MODEL        # lâu: tải thư viện + weights
+uv run vbench model serve   --model $MODEL        # chờ đến khi server sẵn sàng
+uv run vbench run --model $MODEL --profile smoke  # in ra RUN_ID
+uv run vbench model stop    --model $MODEL        # giải phóng GPU trước model tiếp theo
+uv run vbench bundle create <RUN_ID>              # đính kèm cả log server và prepare_report
 ```
 
-`scripts/run_all.sh` (Phase 10) bọc vòng lặp này cho mọi model và có thể tiếp tục khi bị gián đoạn.
+Lưu ý:
+
+- `model prepare` có thể chạy rất lâu (tải vài GB thư viện và hàng chục GB weights). Nên chạy trong `tmux` hoặc `screen` để không bị ngắt khi mất kết nối.
+- Chỉ một model được serve tại một thời điểm (khoá GPU `$VBENCH_HOME/.gpu.lock`). Luôn `model stop` trước khi serve model khác.
+- `HF_HOME` phải nằm trong `VBENCH_HOME` (như mẫu `.env` ở §4) để việc kiểm tra giới hạn đĩa tính cả weights.
+- Nếu `model serve` báo lỗi, server sẽ tự dừng; gửi file `$VBENCH_HOME/logs/runtime_<id>.log` về cho Claude (khi đó chưa có RUN_ID nên không có bundle).
+- Mỗi run tạo `capability_report.json`: ghi lại những gì **quan sát được** (streaming audio, kênh text, tool call, huỷ phản hồi). Báo cáo này chỉ để review, không tự động sửa cấu hình model.
+- `gpt-realtime` chỉ chạy được khi đã điền `realtime.api_model` trong `configs/models/gpt-realtime.yaml` và có `OPENAI_API_KEY`; nếu thiếu, lệnh `run` từ chối chạy.
+
+`scripts/run_all.sh` (Phase 10) sẽ bọc vòng lặp này cho mọi model.
 
 ### 6.4 Tiếp tục sau khi lỗi
 
@@ -247,7 +270,10 @@ Cũng chấp nhận: báo cáo CSV/JSON/parquet/HTML, ảnh chụp màn hình, o
 | `env check` báo `fail` ở `env:OPENAI_API_KEY` | Chưa nạp file `.env` trong terminal hiện tại: chạy lại `set -a; source $VBENCH_HOME/.env; set +a`. |
 | `uv sync` lỗi mạng | Kiểm tra kết nối PyPI (`curl -I https://pypi.org/simple/`); gửi output về. |
 | `vbench: command not found` | Dùng `uv run vbench ...` (không gọi `vbench` trực tiếp) và chạy `uv sync` trong thư mục release trước. |
-| Health check của `model serve` bị timeout | Xem `$VBENCH_HOME/artifacts/raw/<run_id>/logs/runtime_<model>.log`; gửi file đó về. |
+| `model serve` báo "server exited during startup" hoặc "not healthy" | Gửi `$VBENCH_HOME/logs/runtime_<model>.log` về. Với Qwen3-Omni trên 1 GPU, lỗi hết bộ nhớ là rủi ro đã biết (cấu hình `configs/deploy/qwen3_omni_1gpu.yaml` chưa được kiểm chứng). |
+| `model prepare` báo "disk budget exceeded" | Đĩa đã dùng gần 200 GB. Xoá model không cần nữa: `uv run vbench model evict --model <id>`. |
+| `model serve` báo "GPU is locked" | Một model khác đang chạy: `uv run vbench model stop --model <id đó>`. |
+| `run` báo "server is not healthy" | Chưa chạy `model serve`, hoặc server đã dừng: kiểm tra `uv run vbench model status --model <id>`. |
 | CUDA OOM khi nạp model | Kiểm tra không có process GPU nào khác (`nvidia-smi`); gửi `env_report.json` và log runtime. |
 | vLLM từ chối kiến trúc model | Có thể xảy ra với một số model; khi đó `runtime.engine` trong YAML của model phải là `official`. Gửi log để Claude sửa runtime. |
 | Lỗi kết nối OpenAI | Kiểm tra `OPENAI_API_KEY` và HTTPS ra ngoài; `vbench env check` hiển thị khả năng kết nối. |

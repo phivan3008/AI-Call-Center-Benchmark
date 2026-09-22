@@ -2,8 +2,8 @@
 
 | Trường | Giá trị |
 |---|---|
-| Trạng thái | **ĐÃ DUYỆT** (2026-09-22) |
-| Phiên bản | 0.1.0 |
+| Trạng thái | **ĐÃ DUYỆT** (2026-09-22), cập nhật v0.2.0: chiến lược dữ liệu khi không có người nói tiếng Nhật (§10) |
+| Phiên bản | 0.2.0 |
 | Ngày | 2026-09-21 |
 | Phụ thuộc | `docs/ARCHITECTURE.md` v0.2.0, `docs/METRIC_DEFINITIONS.md` v0.1.0 |
 
@@ -196,7 +196,7 @@ Không dùng dữ liệu cá nhân của người gọi thật. Nếu sau này t
 
 ## 8. Tạo audio synthetic
 
-Quyết định còn mở (ARCHITECTURE §15 câu 1): dùng TTS nào để render audio kịch bản. Yêu cầu với bất kỳ lựa chọn nào:
+Hướng đã chốt (2026-09-22): TTS mã nguồn mở chạy cục bộ, chọn ở Phase 3 bằng đo lường (xem §10). Yêu cầu với bất kỳ lựa chọn nào:
 
 - License cho phép tạo kích thích cho benchmark.
 - Nhiều giọng tiếng Nhật: mục tiêu ≥ 6 giọng, cân bằng giới tính, ghi ở `speaker.id`.
@@ -219,4 +219,41 @@ Quyết định còn mở (ARCHITECTURE §15 câu 1): dùng TTS nào để rende
   changelog: "Initial scenario set."
 ```
 
-Chỉ các phiên bản `released` mới được dùng trong run `standard` và `full`. `vbench data prepare` từ chối build dataset nếu audio build ra không khớp `audio_sha256`.
+Chỉ các phiên bản `released` mới được dùng trong run `standard` và `full`. `vbench data prepare` từ chối build dataset nếu audio build ra không khớp `audio_sha256`: khi repo có `datasets/<name>/<version>/manifest.jsonl`, manifest build trên server phải giống hệt file đó (từng mẫu, từng trường).
+
+---
+
+## 10. Chiến lược dữ liệu khi nhóm không có người nói tiếng Nhật (quyết định 2026-09-22)
+
+Nhóm và công ty hiện không có người nói tiếng Nhật. Vì vậy không thể thu âm giọng người trong nhóm, không thể nhờ người review kịch bản, và không thể tự tổ chức chấm MOS bằng người bản ngữ. Chiến lược:
+
+| Nhu cầu | Nguồn | Trạng thái |
+|---|---|---|
+| Giọng người thật, transcript đúng (ASR/CER, smoke) | **FLEURS `ja_jp`** (`google/fleurs`, CC-BY-4.0, người bản ngữ đọc, 650 câu ở split test) | Dùng từ Phase 2 (`fleurs_ja_smoke`); Lớp 1 ASR ở Phase 3 |
+| Câu nói có intent/slot do người bản ngữ viết | **MASSIVE `ja-JP`** (`AmazonScience/massive`, CC-BY-4.0, do người bản ngữ bản địa hoá, có nhãn intent và slot) | Ứng viên cho Phase 4; cần kiểm tra lại license trước khi dùng |
+| Hội thoại nhiều lượt kiểu đặt chỗ, có trạng thái | **JMultiWOZ** (`nu-dialogue/jmultiwoz`, CC-BY-SA-4.0, 4.246 hội thoại do người bản ngữ tạo theo phương pháp Wizard-of-Oz, có belief/book state) | Ứng viên cho Phase 4–5; cần kiểm tra lại license trước khi dùng |
+| Audio cho các câu chỉ có dạng text (MASSIVE, JMultiWOZ, kịch bản tổng đài) | **TTS mã nguồn mở chạy cục bộ trên GPU server** | Chọn ở Phase 3 (xem dưới) |
+| Kịch bản đặc thù tổng đài (keigo, tool riêng) mà dữ liệu công khai không có | Claude soạn, **không có người review** → `text_origin: llm_draft_unreviewed` | Chỉ dùng khi thiếu nguồn công khai; báo cáo kết quả tách riêng theo nguồn text |
+
+### 10.1 Chọn TTS (Phase 3)
+
+Tiêu chí bắt buộc: chạy cục bộ; license cho phép tạo dữ liệu benchmark; có giọng tiếng Nhật; tải được weights từ Hugging Face và thư viện từ PyPI (server không vào được GitHub); **không** cùng họ với model đang benchmark (loại trừ Qwen3-TTS, CosyVoice và Fish Speech vì liên quan đến Qwen/Alibaba, cũng như OpenAI TTS). Các ứng viên đã tra cứu (chưa đánh giá):
+
+| Ứng viên | License (theo model card) | Ghi chú |
+|---|---|---|
+| Kokoro-82M | Apache-2.0 | Có 5 giọng tiếng Nhật, nhưng model card tự xếp hạng chất lượng tiếng Nhật chỉ C/C-/C+ |
+| MioTTS (0.1B–2.6B) | LFM Open License v1.0 | Huấn luyện trên ~100k giờ Anh–Nhật; cần audio tham chiếu để nhân bản giọng; code inference nằm trên GitHub |
+| Style-Bert-VITS2 (JP-Extra) | AGPL-3.0 (thư viện) | Cần biên dịch PyOpenJTalk; license từng giọng khác nhau |
+
+Việc chọn TTS dựa trên **đo lường**: cổng kiểm tra độ rõ tự động (mục 10.2) và MOS proxy, không dựa trên cảm nhận.
+
+### 10.2 Thay cho người nghe kiểm tra: cổng kiểm tra độ rõ tự động
+
+Mỗi câu TTS được chép lại bằng ASR judge (không phải model đang benchmark). Chỉ giữ câu có `cer_kana` ≤ ngưỡng cấu hình; câu không đạt được sinh lại với seed khác hoặc bị loại, và tỷ lệ loại được ghi vào datasheet. Như vậy mọi câu trong dataset đều được máy xác nhận là "nói đúng text", dù không có người bản ngữ nghe.
+
+### 10.3 Hệ quả phải ghi rõ trong báo cáo
+
+- **Lớp 4 (MOS người chấm, 10% business score):** không có người chấm bản ngữ. Lựa chọn: (a) thuê người chấm tiếng Nhật bên ngoài (crowdsourcing/vendor), hoặc (b) chỉ dùng MOS proxy, và toàn bộ leaderboard bị ghi nhãn **provisional** (METRIC_DEFINITIONS §7.3). Cần chủ dự án quyết định trước Phase 8.
+- **Hiệu chỉnh LLM judge (keigo, hiểu):** không có nhãn người để tính Cohen's κ. Thay bằng độ đồng thuận giữa ít nhất hai LLM judge khác nhau, ghi rõ là "không có hiệu chỉnh bằng người".
+- Kết quả luôn được tách theo nguồn kích thích (FLEURS người thật vs TTS) để thấy chênh lệch.
+
