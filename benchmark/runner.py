@@ -34,7 +34,7 @@ from benchmark.core.artifacts import (
 from benchmark.core.clock import Clock, SystemClock
 from benchmark.core.config import RunProfile, Settings
 from benchmark.core.logging import bind_context, configure_logging, get_logger
-from benchmark.core.provenance import capture_env, config_sha256, git_state, new_run_id
+from benchmark.core.provenance import capture_env, config_sha256, new_run_id, source_state
 from benchmark.core.schemas import Layer, ModelVersion, RunManifest, RunStatus
 
 log = get_logger(__name__)
@@ -220,14 +220,17 @@ def start_run(
     clock = clock or SystemClock()
     run_id = new_run_id(clock)
     paths = RunPaths.create(settings.raw_dir, run_id)
-    commit, dirty = git_state(settings.repo_root)
+    source = source_state(settings.repo_root)
     manifest = RunManifest(
         run_id=run_id,
         profile=profile.name,
         is_mock=adapter.is_mock,
         started_at=clock.utc_now(),
-        git_commit=commit,
-        git_dirty=dirty,
+        git_commit=source.commit,
+        git_dirty=source.dirty,
+        source_kind=source.kind,
+        release_name=source.release_name,
+        notes=[f"source: {problem}" for problem in source.problems[:20]],
         config_sha256=config_sha256(
             {"profile": profile.model_dump(mode="json"), "model": model.model_dump(mode="json")}
         ),

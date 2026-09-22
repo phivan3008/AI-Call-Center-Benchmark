@@ -12,7 +12,7 @@ import socket
 import subprocess
 from importlib import metadata
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -85,6 +85,53 @@ def git_state(repo_root: Path) -> tuple[str, bool]:
     except (subprocess.SubprocessError, OSError):
         return "unknown", True
     return commit, bool(status)
+
+
+class SourceState(BaseModel):
+    """Where the running code came from: a git checkout or an offline release package."""
+
+    kind: Literal["git", "release", "unknown"]
+    commit: str
+    dirty: bool
+    release_name: str | None = None
+    problems: list[str] = []
+
+
+def source_state(repo_root: Path) -> SourceState:
+    """Provenance of the code tree.
+
+    A git checkout is used when present. Otherwise ``BUILD_INFO.json`` from an offline
+    release package (GPU server without GitHub access) is verified file by file; any
+    missing, modified or unexpected file marks the tree dirty.
+    """
+    from benchmark.release import ReleaseError, load_build_info, verify_release
+
+    if (repo_root / ".git").exists():
+        commit, dirty = git_state(repo_root)
+        if commit != "unknown":
+            return SourceState(kind="git", commit=commit, dirty=dirty)
+    try:
+        info = load_build_info(repo_root)
+    except ValueError as exc:
+        return SourceState(kind="unknown", commit="unknown", dirty=True, problems=[str(exc)])
+    if info is None:
+        return SourceState(
+            kind="unknown",
+            commit="unknown",
+            dirty=True,
+            problems=["no .git directory and no BUILD_INFO.json"],
+        )
+    try:
+        state = verify_release(repo_root, info)
+    except ReleaseError as exc:  # pragma: no cover - info is already loaded
+        return SourceState(kind="unknown", commit="unknown", dirty=True, problems=[str(exc)])
+    return SourceState(
+        kind="release",
+        commit=info.commit,
+        dirty=info.dirty or not state.ok,
+        release_name=info.release_name,
+        problems=state.problems,
+    )
 
 
 def package_versions(names: tuple[str, ...] = TRACKED_PACKAGES) -> dict[str, str]:

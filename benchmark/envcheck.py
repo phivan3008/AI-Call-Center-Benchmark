@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from benchmark.core.clock import Clock, SystemClock
 from benchmark.core.config import Settings
-from benchmark.core.provenance import capture_env, git_state
+from benchmark.core.provenance import capture_env, source_state
 from benchmark.core.schemas import EnvInfo
 
 Role = Literal["server", "dev"]
@@ -32,6 +32,7 @@ Role = Literal["server", "dev"]
 NETWORK_TARGETS = {
     "huggingface": "https://huggingface.co/api/models?limit=1",
     "openai": "https://api.openai.com/v1/models",
+    "pypi": "https://pypi.org/simple/uv/",
 }
 TOOLS = ("uv", "git", "ffmpeg", "zstd", "nvidia-smi")
 
@@ -54,6 +55,8 @@ class EnvReport(BaseModel):
     generated_at: str
     git_commit: str
     git_dirty: bool
+    source_kind: str
+    release_name: str | None
     vbench_home: str
     environment: EnvInfo
     disk_free_gb: float
@@ -108,7 +111,7 @@ def run_env_check(
     clock = clock or SystemClock()
     server = role == "server"
     info = capture_env()
-    commit, dirty = git_state(settings.repo_root)
+    source = source_state(settings.repo_root)
 
     settings.home.mkdir(parents=True, exist_ok=True)
     usage = shutil.disk_usage(settings.home)
@@ -146,9 +149,38 @@ def run_env_check(
         writable = False
     checks.append(_check("home_writable", writable, str(settings.home), required=True))
 
+    # On the server the code directory is replaced by each new release package, so run
+    # outputs must live outside it (VBENCH_HOME set in .env).
+    home_separate = settings.home.resolve() != settings.repo_root.resolve()
+    checks.append(
+        _check(
+            "home_outside_repo",
+            home_separate,
+            f"VBENCH_HOME={settings.home}" if home_separate else "VBENCH_HOME is the code dir",
+            required=server,
+        )
+    )
+
+    if source.kind == "release":
+        source_detail = f"release {source.release_name} (commit {source.commit[:12]})"
+    else:
+        source_detail = f"{source.kind} (commit {source.commit[:12]})"
+    if source.dirty:
+        source_detail += ", DIRTY (code differs from the recorded commit)"
+    if source.problems:
+        source_detail += f"; {len(source.problems)} problem(s): " + "; ".join(source.problems[:5])
+    checks.append(
+        _check(
+            "source_integrity",
+            source.kind != "unknown" and not source.dirty,
+            source_detail,
+            required=server,
+        )
+    )
+
     for tool in TOOLS:
         path = which(tool)
-        required = server and tool in {"uv", "git", "nvidia-smi"}
+        required = server and tool in {"uv", "nvidia-smi"}
         checks.append(_check(f"tool:{tool}", path is not None, path or "not found", required))
 
     sndfile = ctypes.util.find_library("sndfile")
@@ -165,8 +197,10 @@ def run_env_check(
     return EnvReport(
         role=role,
         generated_at=clock.utc_now().isoformat(),
-        git_commit=commit,
-        git_dirty=dirty,
+        git_commit=source.commit,
+        git_dirty=source.dirty,
+        source_kind=source.kind,
+        release_name=source.release_name,
         vbench_home=str(settings.home),
         environment=info,
         disk_free_gb=round(usage.free / 1024**3, 1),

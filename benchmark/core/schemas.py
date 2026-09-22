@@ -69,6 +69,8 @@ class RunManifest(_Strict):
     finished_at: datetime | None = None
     git_commit: str
     git_dirty: bool
+    source_kind: Literal["git", "release", "unknown"] = "unknown"
+    release_name: str | None = None
     config_sha256: str
     model: ModelVersion
     datasets: list[DatasetRef] = Field(default_factory=list)

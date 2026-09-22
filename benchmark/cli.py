@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -18,13 +19,18 @@ from benchmark.core.config import ConfigError, Settings, load_profile
 from benchmark.core.logging import configure_logging, get_logger
 from benchmark.core.schemas import ModelVersion, RunStatus
 from benchmark.envcheck import CheckStatus, Role, run_env_check
+from benchmark.release import ReleaseError, build_release, verify_archive_digest, verify_release
 from benchmark.runner import execute_run, mock_stimuli
 
 app = typer.Typer(help="Japanese AI call center speech-to-speech benchmark.", no_args_is_help=True)
 env_app = typer.Typer(help="Environment checks.", no_args_is_help=True)
 bundle_app = typer.Typer(help="Create and verify result bundles.", no_args_is_help=True)
+release_app = typer.Typer(
+    help="Offline release packages (GPU server has no GitHub access).", no_args_is_help=True
+)
 app.add_typer(env_app, name="env")
 app.add_typer(bundle_app, name="bundle")
+app.add_typer(release_app, name="release")
 
 log = get_logger("vbench")
 
@@ -146,6 +152,52 @@ def bundle_verify(
     }
     typer.echo(json.dumps(summary, indent=2, ensure_ascii=False))
     raise typer.Exit(0 if result.ok else 1)
+
+
+@release_app.command("build")
+def release_build(
+    out: Annotated[Path, typer.Option(help="Output directory.")] = Path("dist"),
+    tag: Annotated[str | None, typer.Option(help="Git tag this release belongs to.")] = None,
+    allow_dirty: Annotated[
+        bool, typer.Option("--allow-dirty", help="Package uncommitted changes (marked dirty).")
+    ] = False,
+) -> None:
+    """Build <name>.zip + <name>.zip.sha256 from the tracked files at HEAD."""
+    settings = _settings()
+    try:
+        archive = build_release(
+            settings.repo_root,
+            out,
+            version=__version__,
+            built_at=datetime.now(UTC),
+            tag=tag,
+            allow_dirty=allow_dirty,
+        )
+    except ReleaseError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"release: {archive}")
+
+
+@release_app.command("verify")
+def release_verify(
+    archive: Annotated[
+        Path | None,
+        typer.Option(help="Also check a release .zip against its .sha256 file."),
+    ] = None,
+) -> None:
+    """Verify that the extracted code tree matches its BUILD_INFO.json."""
+    settings = _settings()
+    try:
+        if archive is not None and not verify_archive_digest(archive):
+            typer.secho(f"checksum mismatch: {archive.name}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1)
+        state = verify_release(settings.repo_root)
+    except ReleaseError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(json.dumps(state.model_dump(), indent=2, ensure_ascii=False))
+    raise typer.Exit(0 if state.ok else 1)
 
 
 if __name__ == "__main__":  # pragma: no cover
