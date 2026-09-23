@@ -1,6 +1,6 @@
 [project]
 name = "ai-callcenter-benchmark"
-version = "0.2.4"
+version = "0.2.5"
 description = "Benchmark framework for native speech-to-speech models in Japanese AI call center deployment"
 readme = "README.md"
 requires-python = ">=3.11"
