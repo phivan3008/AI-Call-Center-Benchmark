@@ -21,6 +21,9 @@ artifacts/**
 !artifacts/*/
 !artifacts/*/.gitkeep
 bundles/
+bundles*.zip
+*.tar.zst
+*.SHA256SUMS
 
 # Offline release packages and their build info (generated, never committed)
 dist/
