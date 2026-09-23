@@ -81,8 +81,10 @@ def test_prepare_writes_report(
     installs = [c for c in runner.calls if "install" in c and "--torch-backend" in c]
     assert [c[5] for c in installs] == ["vllm==0.28.0", "vllm-omni==0.28.0"]
     # post_install swaps OpenCV for the headless build; imports are checked in the venv.
-    assert any("uninstall" in c and "opencv-python" in c for c in runner.calls)
-    assert any("opencv-python-headless>=4.13" in c for c in runner.calls)
+    uninstalled = [c[-1] for c in runner.calls if "uninstall" in c]
+    assert uninstalled == ["opencv-python", "opencv-python-headless"]
+    reinstall = next(c for c in runner.calls if "--reinstall-package" in c)
+    assert reinstall[-1] == "opencv-python-headless>=4.13"
     imported = [c[2].removeprefix("import ") for c in runner.calls if c[1:2] == ["-c"]]
     assert imported[-4:] == ["vllm", "vllm_omni", "cv2", "soundfile"]
     assert manager.load_prepare_report(settings, spec) == report

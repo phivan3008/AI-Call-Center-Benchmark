@@ -218,10 +218,13 @@ def prepare(
 
 IMPORT_HINTS = {
     "cv2": (
-        "OpenCV needs the system libraries libGL.so.1 and libglib2.0. In a headless "
-        "container install them once as root:\n"
-        "  apt-get update && apt-get install -y libgl1 libglib2.0-0\n"
-        "(on older images the package is called libgl1-mesa-glx)."
+        "Two known causes:\n"
+        "  1) the container lacks the system libraries libGL.so.1 / libglib2.0 -> install "
+        "them once as root: apt-get update && apt-get install -y libgl1 libglib2.0-0 "
+        "(older images call the package libgl1-mesa-glx);\n"
+        "  2) opencv-python and opencv-python-headless were both installed and removing one "
+        "deleted the shared cv2 files -> re-run `vbench model prepare`, which reinstalls the "
+        "headless build."
     ),
 }
 
