@@ -16,6 +16,7 @@ import typer
 from benchmark import __version__
 from benchmark.adapters import adapter_registry
 from benchmark.adapters.base import ModelAdapter
+from benchmark.adapters.chat import ChatAdapter
 from benchmark.adapters.mock import MOCK_MODEL_ID
 from benchmark.adapters.realtime import RealtimeAdapter
 from benchmark.bundle import BundleError, create_bundle, verify_bundle
@@ -160,15 +161,16 @@ def run(
             spec.runtime.port, spec.runtime.health_path
         ):
             raise _fail(f"{model} server is not healthy; run: vbench model serve --model {model}")
-        if spec.realtime.dialect == "openai" and not spec.realtime.api_model:
-            raise _fail(f"{model}: set realtime.api_model in configs/models/{model}.yaml first")
-        if spec.realtime.auth_env and not os.environ.get(spec.realtime.auth_env):
-            raise _fail(f"{model}: {spec.realtime.auth_env} is not set (load .env first)")
+        endpoint = spec.chat if spec.transport == "chat" and spec.chat else spec.realtime
+        if not endpoint.api_model:
+            raise _fail(f"{model}: set {spec.transport}.api_model in configs/models/{model}.yaml")
+        if endpoint.auth_env and not os.environ.get(endpoint.auth_env):
+            raise _fail(f"{model}: {endpoint.auth_env} is not set (load .env first)")
         try:
             stimuli, datasets = build_stimuli(settings, run_profile)
         except ConfigError as exc:
             raise _fail(str(exc)) from exc
-        adapter = RealtimeAdapter(spec)
+        adapter = ChatAdapter(spec) if spec.transport == "chat" else RealtimeAdapter(spec)
         version = _model_version(settings, spec)
 
     manifest = asyncio.run(

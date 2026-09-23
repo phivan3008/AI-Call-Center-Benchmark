@@ -2,12 +2,49 @@
 
 | Trường | Giá trị |
 |---|---|
-| Trạng thái | Phase 2 — đã cài đặt trong `benchmark/adapters/realtime.py` |
-| Phiên bản | 0.1.0 |
+| Trạng thái | Phase 2 — `benchmark/adapters/chat.py` (theo lượt) và `benchmark/adapters/realtime.py` (thời gian thực) |
+| Phiên bản | 0.2.0 |
 | Ngày | 2026-09-22 |
 | Thay thế | "Model Gateway Protocol" trong ARCHITECTURE §6.1 (bản dự kiến `GATEWAY_PROTOCOL.md`) |
 
 > Bản tiếng Việt. Tên event, tên trường JSON và code giữ nguyên tiếng Anh.
+
+## 0. Hai kênh giao tiếp (cập nhật 2026-09-23, sau checkpoint 2)
+
+| Kênh | Dùng cho | Endpoint | Hỗ trợ |
+|---|---|---|---|
+| **chat** (`transport: chat`) | Lớp chấm điểm theo lượt: L1, L3, L4 | `POST /v1/chat/completions`, `stream: true` | system prompt, tool calling, audio vào/ra, huỷ bằng cách đóng luồng |
+| **realtime** (`transport: realtime`) | Thời gian thực, barge-in (Phase 6) và GPT-Realtime | WebSocket `/v1/realtime` | streaming, huỷ phản hồi, song công (duplex) |
+
+**Vì sao tách ra.** Ở checkpoint 2, mọi mẫu đều trả về event `error` rỗng. Đọc mã nguồn cho thấy `/v1/realtime?duplex=0` của vLLM-Omni chính là **API chép lời (speech-to-text) của vLLM upstream**: nó chỉ nhận ba event `session.update {model}`, `input_audio_buffer.append {audio}`, `input_audio_buffer.commit {final}`. Không có chỗ cho system prompt, không có tool, không có lệnh huỷ, và event lỗi có trường `error` là **chuỗi** chứ không phải object (nên thông báo lỗi của chúng ta rỗng). Handler duplex mới dùng bộ event kiểu OpenAI như mô tả ở các mục dưới.
+
+Vì các lớp chấm điểm cần system prompt và tool, chế độ theo lượt chuyển sang `/v1/chat/completions`.
+
+### 0.1 Kênh chat
+
+Request (vLLM-Omni):
+
+```json
+{
+  "model": "openbmb/MiniCPM-o-4_5",
+  "messages": [
+    {"role": "system", "content": [{"type": "text", "text": "<system prompt>"}]},
+    {"role": "user", "content": [{"type": "audio_url", "audio_url": {"url": "data:audio/wav;base64,..."}}]}
+  ],
+  "modalities": ["text", "audio"],
+  "chat_template_kwargs": {"use_tts_template": true},
+  "tools": [{"type": "function", "function": {...}}],
+  "stream": true
+}
+```
+
+Mỗi chunk SSE có `modality` ở cấp cao nhất; khi `modality == "audio"` thì `choices[].delta.content` là base64 của audio (WAV hoặc PCM16 thô, adapter xử lý cả hai), ngược lại là text. Tool call theo chuẩn OpenAI (`choices[].delta.tool_calls`), kết quả tool gửi lại bằng message `role: tool`.
+
+Huỷ phản hồi = đóng luồng HTTP; server dừng sinh. Đây là "huỷ kiểu orchestrated", được gắn tag như vậy trong kết quả.
+
+Cài đặt: `benchmark/adapters/chat.py`; server giả lập để test: `benchmark/testing/fake_chat.py`.
+
+---
 
 ## 1. Vì sao dùng giao thức kiểu OpenAI Realtime
 

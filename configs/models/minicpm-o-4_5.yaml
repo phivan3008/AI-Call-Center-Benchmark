@@ -15,9 +15,20 @@ runtime:
   deploy_config: null           # vLLM-Omni default for this model
   serve_args: ["--omni", "--trust-remote-code", "--init-timeout", "1800", "--stage-init-timeout", "1800"]
   launch_timeout_s: 1800
+# Turn-mode tasks go over chat completions: vLLM-Omni's turn-based /v1/realtime is upstream
+# vLLM's speech-to-text realtime API and carries no system prompt, tools or cancel
+# (checkpoint 2, 2026-09-23). The realtime WebSocket stays configured for Phase 6 (duplex).
+transport: chat
+chat:
+  url: http://127.0.0.1:18002/v1/chat/completions
+  api_model: openbmb/MiniCPM-o-4_5
+  modalities: [text, audio]
+  chat_template_kwargs: {use_tts_template: true}   # recipe: text + speech in one response
+  input_sample_rate_hz: 16000
+  output_sample_rate_hz: 24000
 realtime:
   dialect: vllm_omni
-  url: ws://127.0.0.1:18002/v1/realtime?duplex=0   # turn-based handler (duplex in Phase 6)
+  url: ws://127.0.0.1:18002/v1/realtime?duplex=1   # duplex handler, used from Phase 6
   api_model: openbmb/MiniCPM-o-4_5
   input_sample_rate_hz: 16000
   output_sample_rate_hz: 24000

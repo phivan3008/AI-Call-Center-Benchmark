@@ -90,50 +90,26 @@ def test_run_real_model_preconditions(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_run_real_model_end_to_end_with_fake_server(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Full CLI path with a fake realtime server and a tiny prepared dataset."""
-    import asyncio
-    import threading
-
+    """Full CLI path over the chat transport with a fake chat-completions server."""
+    from benchmark.adapters.chat import ChatAdapter
     from benchmark.runner import Stimulus
-    from benchmark.testing.fake_realtime import FakeRealtimeServer
+    from benchmark.testing.fake_chat import FakeChatServer
 
-    loop = asyncio.new_event_loop()
-    server = FakeRealtimeServer()
-    started = threading.Event()
-
-    def serve() -> None:
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(server.__aenter__())
-        started.set()
-        loop.run_forever()
-
-    thread = threading.Thread(target=serve, daemon=True)
-    thread.start()
-    started.wait(5)
-    try:
-        original = cli.load_model_spec
-
-        def patched_spec(settings: Any, model: str) -> Any:
-            spec = original(settings, model)
-            return spec.model_copy(
-                update={"realtime": spec.realtime.model_copy(update={"url": server.url})}
-            )
-
-        pcm = b"\x00\x10" * 16000
-        stimuli = [Stimulus("s0", "L1", pcm, 16000, 1.0, task="turn")]
-        monkeypatch.setattr(cli, "load_model_spec", patched_spec)
-        monkeypatch.setattr(cli.manager, "health_ok", lambda *a: True)
-        monkeypatch.setattr(cli, "build_stimuli", lambda s, p: (stimuli, []))
-        result = runner.invoke(app, ["run", "--model", "minicpm-o-4_5", "--profile", "smoke"])
-        assert result.exit_code == 0, result.output
-        run_id = re.search(r"RUN_ID=(\w+)", result.stdout).group(1)  # type: ignore[union-attr]
-    finally:
-        loop.call_soon_threadsafe(loop.stop)
-        thread.join(5)
+    server = FakeChatServer()
+    monkeypatch.setattr(cli, "ChatAdapter", lambda spec: ChatAdapter(spec, client=server.client()))
+    monkeypatch.setattr(cli.manager, "health_ok", lambda *a: True)
+    pcm = bytes(2 * 16000)
+    monkeypatch.setattr(
+        cli, "build_stimuli", lambda s, p: ([Stimulus("s0", "L1", pcm, 16000, 1.0)], [])
+    )
+    result = runner.invoke(app, ["run", "--model", "minicpm-o-4_5", "--profile", "smoke"])
+    assert result.exit_code == 0, result.output
+    run_id = re.search(r"RUN_ID=(\w+)", result.stdout).group(1)  # type: ignore[union-attr]
 
     manifest = json.loads((tmp_path / "artifacts" / "raw" / run_id / "manifest.json").read_text())
     assert manifest["model"]["engine"] == "vllm-omni"
     assert manifest["is_mock"] is False
+    assert server.requests[0]["model"] == "openbmb/MiniCPM-o-4_5"
 
     # Bundle attaches runtime logs and prepare reports.
     (tmp_path / "logs").mkdir()

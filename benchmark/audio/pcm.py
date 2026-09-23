@@ -6,6 +6,7 @@ library name and version are recorded in run manifests via ``package_versions``.
 
 from __future__ import annotations
 
+import io
 import wave
 from pathlib import Path
 
@@ -45,14 +46,32 @@ _WAVE_EXTENSIBLE = 0xFFFE
 
 
 def read_wav(path: Path) -> tuple[bytes, int]:
-    """Read a WAV file as mono PCM16.
+    """Read a WAV file as mono PCM16 (see :func:`read_wav_bytes`)."""
+    try:
+        return read_wav_bytes(path.read_bytes())
+    except ValueError as exc:
+        raise ValueError(f"{path}: {exc}") from None
+
+
+def wav_bytes(pcm16: bytes, sample_rate_hz: int) -> bytes:
+    """A mono PCM16 WAV container in memory (for audio sent to HTTP APIs)."""
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate_hz)
+        wav.writeframes(pcm16)
+    return buffer.getvalue()
+
+
+def read_wav_bytes(data: bytes) -> tuple[bytes, int]:
+    """Decode WAV bytes as mono PCM16.
 
     Supports 16-bit integer PCM and 32-bit IEEE float (FLEURS ships float WAVs), including
     WAVE_FORMAT_EXTENSIBLE headers. The stdlib ``wave`` module only reads integer PCM.
     """
-    data = path.read_bytes()
     if data[:4] != b"RIFF" or data[8:12] != b"WAVE":
-        raise ValueError(f"{path}: not a RIFF/WAVE file")
+        raise ValueError("not a RIFF/WAVE file")
     fmt: tuple[int, int, int, int] | None = None
     payload: bytes | None = None
     pos = 12
@@ -72,14 +91,14 @@ def read_wav(path: Path) -> tuple[bytes, int]:
             payload = body
         pos += 8 + size + (size % 2)
     if fmt is None or payload is None:
-        raise ValueError(f"{path}: missing fmt or data chunk")
+        raise ValueError("missing fmt or data chunk")
     tag, channels, rate, bits = fmt
     if tag == _WAVE_PCM and bits == 16:
         samples = pcm16_to_float(payload[: len(payload) // 2 * 2])
     elif tag == _WAVE_FLOAT and bits == 32:
         samples = np.frombuffer(payload[: len(payload) // 4 * 4], dtype="<f4").astype(np.float32)
     else:
-        raise ValueError(f"{path}: unsupported WAV format (tag={tag}, bits={bits})")
+        raise ValueError(f"unsupported WAV format (tag={tag}, bits={bits})")
     if channels == 1 and tag == _WAVE_PCM:
         return payload[: len(payload) // 2 * 2], rate
     return float_to_pcm16(to_mono(samples, channels)), rate

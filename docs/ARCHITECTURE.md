@@ -210,6 +210,8 @@ sequenceDiagram
     G-->>H: response.cancelled
 ```
 
+**Cập nhật Phase 2 (2026-09-23):** đo thực tế cho thấy `/v1/realtime?duplex=0` của vLLM-Omni là API chép lời của vLLM upstream (không nhận system prompt, tool hay lệnh huỷ). Vì vậy harness có **hai kênh**: `transport: chat` (`/v1/chat/completions`, dùng cho các lớp chấm điểm theo lượt) và `transport: realtime` (WebSocket, dùng cho thời gian thực/duplex ở Phase 6 và cho GPT-Realtime). Chi tiết: `docs/REALTIME_PROTOCOL.md` §0.
+
 **Cập nhật Phase 2 (2026-09-22):** vLLM-Omni 0.28 đã có sẵn WebSocket `/v1/realtime` theo event của OpenAI Realtime cho Qwen3-Omni và MiniCPM-o 4.5. Với hai model này, harness nói chuyện trực tiếp với vLLM-Omni, không cần gateway riêng; gateway chỉ cần cho các model vLLM-Omni không hỗ trợ (Phase 9). Chi tiết event: `docs/REALTIME_PROTOCOL.md`. Hai model dùng chung một venv `vllm_omni_0_28` (vllm==0.28.0, vllm-omni==0.28.0, Python 3.12).
 
 Giao thức được thiết kế có chủ đích theo cấu trúc event của OpenAI Realtime API, để baseline thương mại và các model OSS dùng chung một bộ từ vựng event. Với mỗi model OSS, gateway (`runtimes/<model>/server.py`) dịch giao thức này sang API inference gốc của model.

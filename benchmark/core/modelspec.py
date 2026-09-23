@@ -48,6 +48,20 @@ class RealtimeEndpoint(_Strict):
     auth_env: str | None = None  # env var holding a bearer token, e.g. OPENAI_API_KEY
 
 
+class ChatEndpoint(_Strict):
+    """OpenAI-compatible ``/v1/chat/completions`` endpoint used for turn-mode tasks."""
+
+    url: str
+    api_model: str
+    modalities: list[str] = Field(default_factory=lambda: ["text", "audio"])
+    chat_template_kwargs: dict[str, Any] = Field(default_factory=dict)
+    extra_body: dict[str, Any] = Field(default_factory=dict)
+    input_sample_rate_hz: int = 16000
+    output_sample_rate_hz: int = 24000
+    request_timeout_s: float = 300.0
+    auth_env: str | None = None
+
+
 class LocalRuntime(_Strict):
     kind: Literal["vllm_omni"]
     runtime_id: str  # configs/runtimes/<runtime_id>.yaml (shared venv)
@@ -70,7 +84,10 @@ class ModelSpec(_Strict):
     commercial_use: Literal["allowed", "restricted", "unknown"] = "unknown"
     source: HubSource | None = None
     runtime: LocalRuntime | RemoteRuntime = Field(discriminator="kind")
+    # Turn-mode tasks use `chat`; streaming/duplex work (Phase 6) uses `realtime`.
+    transport: Literal["chat", "realtime"] = "realtime"
     realtime: RealtimeEndpoint
+    chat: ChatEndpoint | None = None
     capabilities: Capabilities = Capabilities()
     sampling: dict[str, Any] = Field(default_factory=dict)
     notes: list[str] = Field(default_factory=list)

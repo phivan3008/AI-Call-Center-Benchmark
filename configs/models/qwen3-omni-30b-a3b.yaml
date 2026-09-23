@@ -17,9 +17,17 @@ runtime:
   # vLLM-Omni recipe: disable async chunking when using /v1/realtime.
   serve_args: ["--omni", "--no-async-chunk", "--trust-remote-code", "--init-timeout", "1800", "--stage-init-timeout", "1800"]
   launch_timeout_s: 2400
+# See the note in minicpm-o-4_5.yaml: turn-mode tasks use chat completions.
+transport: chat
+chat:
+  url: http://127.0.0.1:18001/v1/chat/completions
+  api_model: Qwen/Qwen3-Omni-30B-A3B-Instruct
+  modalities: [text, audio]
+  input_sample_rate_hz: 16000
+  output_sample_rate_hz: 24000
 realtime:
   dialect: vllm_omni
-  url: ws://127.0.0.1:18001/v1/realtime?duplex=0   # turn-based handler (duplex in Phase 6)
+  url: ws://127.0.0.1:18001/v1/realtime?duplex=1   # duplex handler, used from Phase 6
   api_model: Qwen/Qwen3-Omni-30B-A3B-Instruct
   input_sample_rate_hz: 16000
   output_sample_rate_hz: 24000
