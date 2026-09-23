@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import shutil
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -228,6 +229,21 @@ def model_serve(
     except manager.RuntimeError_ as exc:
         raise _fail(str(exc), 1) from exc
     typer.echo(json.dumps(state, indent=2, ensure_ascii=False))
+
+
+@model_app.command("check")
+def model_check(model: Annotated[str, typer.Option(help="Model id.")]) -> None:
+    """Import the runtime's modules inside its venv (catches missing system libraries)."""
+    settings = _settings()
+    spec, runtime = _local_spec(settings, model)
+    paths = manager.RuntimePaths(settings, spec.model_id, runtime.runtime_id)
+    if not paths.python.exists():
+        raise _fail(f"{model} has no runtime venv; run: vbench model prepare --model {model}", 1)
+    try:
+        manager.check_imports(paths.python, runtime.verify_imports, subprocess.run)
+    except manager.RuntimeError_ as exc:
+        raise _fail(str(exc), 1) from exc
+    typer.echo(f"ok: {', '.join(runtime.verify_imports)}")
 
 
 @model_app.command("stop")

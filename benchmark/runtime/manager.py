@@ -182,6 +182,15 @@ def prepare(
         ).strip()
         or "{}"
     )
+    for step in runtime.post_install:
+        args = [arg.format(python=str(paths.python)) for arg in step.args]
+        try:
+            _run([uv, *args], runner)
+        except RuntimeError_:
+            if not step.ignore_failure:
+                raise
+            log.warning("post_install_step_failed", args=args, why=step.why)
+    check_imports(paths.python, runtime.verify_imports, runner)
     freeze = _run([uv, "pip", "freeze", "--python", str(paths.python)], runner)
 
     snapshot = download(repo_id=spec.source.repo, revision=spec.source.revision)
@@ -205,6 +214,32 @@ def prepare(
     (paths.state_dir / "pip_freeze.txt").write_text(freeze, encoding="utf-8")
     atomic_write_json(paths.prepare_report, report)
     return report
+
+
+IMPORT_HINTS = {
+    "cv2": (
+        "OpenCV needs the system libraries libGL.so.1 and libglib2.0. In a headless "
+        "container install them once as root:\n"
+        "  apt-get update && apt-get install -y libgl1 libglib2.0-0\n"
+        "(on older images the package is called libgl1-mesa-glx)."
+    ),
+}
+
+
+def check_imports(python: Path, modules: list[str], runner: Runner) -> None:
+    """Import each module inside the runtime venv.
+
+    vLLM-Omni imports these in worker subprocesses; without this check a missing system
+    library only shows up as an orchestrator start-up timeout minutes later.
+    """
+    for module in modules:
+        try:
+            _run([str(python), "-c", f"import {module}"], runner)
+        except RuntimeError_ as exc:
+            hint = IMPORT_HINTS.get(module, "")
+            raise RuntimeError_(
+                f"the runtime venv cannot import '{module}'. {hint}\n{exc}"
+            ) from exc
 
 
 def _sha256_text(text: str) -> str:

@@ -7,4 +7,17 @@ packages:
   - vllm==0.28.0
   - vllm-omni==0.28.0
 torch_backend: auto
+
+# vLLM-Omni worker subprocesses import cv2. The GUI build of OpenCV needs libGL.so.1, which
+# headless containers do not have (checkpoint 2, 2026-09-23), so keep only the headless build.
+post_install:
+  - args: [pip, uninstall, --python, "{python}", opencv-python]
+    ignore_failure: true
+    why: "not installed when only the headless build was pulled in"
+  - args: [pip, install, --python, "{python}", "opencv-python-headless>=4.13"]
+
+# Imported inside the venv at prepare time: a missing system library must fail here, not as
+# an orchestrator start-up timeout ten minutes into `vbench model serve`.
+verify_imports: [vllm, vllm_omni, cv2, soundfile]
+
 serve_command: [vllm, serve]

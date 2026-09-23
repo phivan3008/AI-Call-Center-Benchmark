@@ -184,8 +184,12 @@ def run_env_check(
         required = server and tool in {"uv", "nvidia-smi"}
         checks.append(_check(f"tool:{tool}", path is not None, path or "not found", required))
 
-    sndfile = ctypes.util.find_library("sndfile")
-    checks.append(_check("lib:sndfile", sndfile is not None, sndfile or "not found", False))
+    # Model runtimes need these system libraries: libsndfile (audio I/O) and libGL/libglib
+    # (OpenCV, imported by vLLM-Omni workers). Install with:
+    #   apt-get update && apt-get install -y libgl1 libglib2.0-0 libsndfile1
+    for label, lib in (("sndfile", "sndfile"), ("GL", "GL"), ("glib", "glib-2.0")):
+        found = ctypes.util.find_library(lib)
+        checks.append(_check(f"lib:{label}", found is not None, found or "not found", False))
 
     for name, url in NETWORK_TARGETS.items():
         reachable, detail = probe(url)

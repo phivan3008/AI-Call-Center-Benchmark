@@ -127,6 +127,7 @@ Cập nhật 2026-09-22 sau khi tra tài liệu vLLM-Omni và nhận quyết đ�
   - `env check`: `OPENAI_API_KEY` chuyển thành cảnh báo; thêm kiểm tra giới hạn đĩa.
 - Test: adapter với server giả lập (turn, tool, huỷ, lỗi, từ chối session, tên event cũ, xác thực OpenAI), runner 3 loại tác vụ, capability report, bộ build FLEURS với dữ liệu giả, runtime manager với subprocess/HF giả, CLI end-to-end với server giả lập.
 - **⏸ HITL checkpoint 2:** xem hướng dẫn checkpoint trong tin nhắn bàn giao và `DEPLOYMENT_GUIDE.md` §6.3. Gửi về: 2 bundle (mỗi model một run smoke), hoặc log `runtime_<model>.log` nếu `model serve` lỗi, cùng output của `model prepare`.
+- Kết quả lần thử checkpoint 2 đầu tiên (2026-09-23): `model prepare` chạy được, nhưng `model serve` của MiniCPM-o 4.5 thất bại vì container thiếu `libGL.so.1` (tiến trình con của vLLM-Omni import `cv2`). Đã sửa ở v0.2.2: runtime chỉ dùng OpenCV bản headless, `model prepare` import thử các module trong venv và báo lỗi ngay, thêm lệnh `vbench model check`, tăng `--init-timeout`/`--stage-init-timeout` lên 1800 giây, và `env check` kiểm tra libGL/libglib.
 - Điều kiện hoàn thành: MiniCPM-o 4.5 chạy xong smoke; Qwen3-Omni chạy xong smoke hoặc có log lỗi rõ ràng (ví dụ hết bộ nhớ) để quyết định chuyển sang FP8; capability report đã review.
 
 ### Phase 3 — Lát cắt dọc: Lớp 1 ASR → Leaderboard

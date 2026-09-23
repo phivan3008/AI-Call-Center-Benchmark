@@ -13,7 +13,7 @@ runtime:
   runtime_id: vllm_omni_0_28
   port: 18002
   deploy_config: null           # vLLM-Omni default for this model
-  serve_args: ["--omni", "--trust-remote-code"]
+  serve_args: ["--omni", "--trust-remote-code", "--init-timeout", "1800", "--stage-init-timeout", "1800"]
   launch_timeout_s: 1800
 realtime:
   dialect: vllm_omni

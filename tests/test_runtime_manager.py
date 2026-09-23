@@ -78,10 +78,31 @@ def test_prepare_writes_report(
     assert report["revision"] == spec.source.revision  # type: ignore[union-attr]
     assert report["packages_installed"] == {"vllm": "0.28.0"}
     assert report["disk_budget_gb"] == 200.0
-    installs = [c for c in runner.calls if "install" in c]
+    installs = [c for c in runner.calls if "install" in c and "--torch-backend" in c]
     assert [c[5] for c in installs] == ["vllm==0.28.0", "vllm-omni==0.28.0"]
-    assert all("--torch-backend" in c for c in installs)
+    # post_install swaps OpenCV for the headless build; imports are checked in the venv.
+    assert any("uninstall" in c and "opencv-python" in c for c in runner.calls)
+    assert any("opencv-python-headless>=4.13" in c for c in runner.calls)
+    imported = [c[2].removeprefix("import ") for c in runner.calls if c[1:2] == ["-c"]]
+    assert imported[-4:] == ["vllm", "vllm_omni", "cv2", "soundfile"]
     assert manager.load_prepare_report(settings, spec) == report
+
+
+def test_prepare_reports_missing_system_library(
+    settings: Settings, spec: ModelSpec, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(manager.shutil, "which", lambda _: "/usr/bin/uv")
+    with pytest.raises(RuntimeError_, match=r"(?s)cannot import .cv2.*libgl1"):
+        _prepare(settings, spec, tmp_path, runner=FakeRunner(fail_on="import cv2"))
+
+
+def test_post_install_failure_can_be_ignored(
+    settings: Settings, spec: ModelSpec, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(manager.shutil, "which", lambda _: "/usr/bin/uv")
+    # `uv pip uninstall opencv-python` fails when it is not installed: ignore_failure=true.
+    report = _prepare(settings, spec, tmp_path, runner=FakeRunner(fail_on="uninstall"))
+    assert report["model_id"] == MODEL
 
 
 def test_prepare_refuses_over_budget_and_failures(

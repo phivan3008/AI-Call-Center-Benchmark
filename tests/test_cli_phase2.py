@@ -195,3 +195,32 @@ def test_capability_report_negative_branches() -> None:
     bad_json = [_result(task="tool", tool_calls=[{"call_id": "1", "name": "f", "arguments": "{"}])]
     obs = build_capability_report("m", bad_json, ModelCapabilities())["observations"]
     assert obs["native_tool_calling"]["observation"] == "not_observed"
+
+
+def test_model_check_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    result = runner.invoke(app, ["model", "check", "--model", "minicpm-o-4_5"])
+    assert result.exit_code == 1
+    assert "no runtime venv" in result.output
+
+    venv_bin = tmp_path / "runtimes" / "vllm_omni_0_28" / ".venv"
+    (venv_bin / "Scripts").mkdir(parents=True)
+    (venv_bin / "bin").mkdir(parents=True)
+    for exe in (venv_bin / "Scripts" / "python.exe", venv_bin / "bin" / "python"):
+        exe.write_text("", encoding="utf-8")
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        cli.manager, "check_imports", lambda python, modules, runner_: calls.append(modules)
+    )
+    result = runner.invoke(app, ["model", "check", "--model", "minicpm-o-4_5"])
+    assert result.exit_code == 0, result.output
+    assert calls == [["vllm", "vllm_omni", "cv2", "soundfile"]]
+    assert "ok: vllm, vllm_omni, cv2, soundfile" in result.stdout
+
+    def boom(*args: Any, **kwargs: Any) -> None:
+        raise cli.manager.RuntimeError_("cannot import 'cv2'. install libgl1")
+
+    monkeypatch.setattr(cli.manager, "check_imports", boom)
+    result = runner.invoke(app, ["model", "check", "--model", "minicpm-o-4_5"])
+    assert result.exit_code == 1
+    assert "libgl1" in result.output

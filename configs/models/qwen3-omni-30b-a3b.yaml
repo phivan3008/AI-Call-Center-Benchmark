@@ -15,7 +15,7 @@ runtime:
   port: 18001
   deploy_config: configs/deploy/qwen3_omni_1gpu.yaml
   # vLLM-Omni recipe: disable async chunking when using /v1/realtime.
-  serve_args: ["--omni", "--no-async-chunk", "--trust-remote-code"]
+  serve_args: ["--omni", "--no-async-chunk", "--trust-remote-code", "--init-timeout", "1800", "--stage-init-timeout", "1800"]
   launch_timeout_s: 2400
 realtime:
   dialect: vllm_omni

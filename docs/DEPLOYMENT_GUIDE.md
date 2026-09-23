@@ -51,8 +51,8 @@ Claude (máy dev) --push + tag--> GitHub --tạo Release--> [file .zip + .zip.sh
 | `uv` | `uv --version` | Cài: `curl -LsSf https://astral.sh/uv/install.sh \| sh` (hoặc `pip install uv`). `uv` tự cài Python 3.11+ cho từng venv. |
 | `python3` hoặc `unzip` | `python3 --version` | Để giải nén gói release (`python3 -m zipfile -e ...`). |
 | `sha256sum` | `sha256sum --version` | Kiểm tra file `.zip` sau khi copy (có sẵn trên Linux). |
+| Thư viện hệ thống cho model runtime | `ldconfig -p \| grep -E "libGL\\.so\\.1\|libglib-2.0\|libsndfile"` | **Bắt buộc từ Phase 2.** Tiến trình con của vLLM-Omni import OpenCV (`cv2`), cần `libGL.so.1` và `libglib2.0`. Cài một lần bằng quyền root:<br>`apt-get update && apt-get install -y libgl1 libglib2.0-0 libsndfile1`<br>(ảnh cũ dùng tên `libgl1-mesa-glx`) |
 | `ffmpeg` | `ffmpeg -version` | Chuyển đổi audio, mô phỏng kênh điện thoại (cần từ Phase 3). |
-| `libsndfile` | `ldconfig -p \| grep sndfile` | Đọc/ghi FLAC (cần từ Phase 3). |
 | Dung lượng đĩa trống | `df -h $VBENCH_HOME` | Xem §5. |
 
 Server **không cần** `git`. Bản thân framework không cần quyền root, ngoài việc cài các gói hệ thống ở trên.
@@ -192,6 +192,7 @@ Các lệnh quản lý model:
 | `uv run vbench data prepare --dataset <tên>` | Tải dữ liệu (revision chốt cứng) và build audio; kết quả phải khớp manifest trong repo |
 | `uv run vbench model prepare --model <id>` | Tạo venv runtime (tải thư viện từ PyPI) và tải weights (Hugging Face) đúng revision; kiểm tra giới hạn đĩa 200 GB trước khi tải; ghi `prepare_report.json` với dung lượng **đo thực tế** |
 | `uv run vbench model serve --model <id>` | Chạy server model ở nền, chờ đến khi `/health` trả lời; ghi log vào `$VBENCH_HOME/logs/runtime_<id>.log`; khoá GPU |
+| `uv run vbench model check --model <id>` | Import thử các module trong venv của runtime (bắt lỗi thiếu thư viện hệ thống) |
 | `uv run vbench model status --model <id>` | Đã prepare chưa, có đang chạy và khoẻ không |
 | `uv run vbench model stop --model <id>` | Dừng server, mở khoá GPU |
 | `uv run vbench model evict --model <id>` | Dừng server và xoá weights để giải phóng đĩa (`--with-runtime` xoá cả venv dùng chung) |
@@ -210,6 +211,7 @@ uv run vbench bundle create <RUN_ID>              # đính kèm cả log server 
 
 Lưu ý:
 
+- `model prepare` kết thúc bằng bước import thử `vllm`, `vllm_omni`, `cv2`, `soundfile` trong venv. Nếu thiếu thư viện hệ thống, lệnh báo lỗi ngay kèm cách khắc phục, thay vì để `model serve` treo 10 phút rồi timeout.
 - `model prepare` có thể chạy rất lâu (tải vài GB thư viện và hàng chục GB weights). Nên chạy trong `tmux` hoặc `screen` để không bị ngắt khi mất kết nối.
 - Chỉ một model được serve tại một thời điểm (khoá GPU `$VBENCH_HOME/.gpu.lock`). Luôn `model stop` trước khi serve model khác.
 - `HF_HOME` phải nằm trong `VBENCH_HOME` (như mẫu `.env` ở §4) để việc kiểm tra giới hạn đĩa tính cả weights.
@@ -270,6 +272,8 @@ Cũng chấp nhận: báo cáo CSV/JSON/parquet/HTML, ảnh chụp màn hình, o
 | `env check` báo `fail` ở `env:OPENAI_API_KEY` | Chưa nạp file `.env` trong terminal hiện tại: chạy lại `set -a; source $VBENCH_HOME/.env; set +a`. |
 | `uv sync` lỗi mạng | Kiểm tra kết nối PyPI (`curl -I https://pypi.org/simple/`); gửi output về. |
 | `vbench: command not found` | Dùng `uv run vbench ...` (không gọi `vbench` trực tiếp) và chạy `uv sync` trong thư mục release trước. |
+| `ImportError: libGL.so.1` trong log server, hoặc `model prepare`/`model check` báo "cannot import 'cv2'" | Container thiếu thư viện đồ hoạ mà OpenCV cần. Cài bằng quyền root: `apt-get update && apt-get install -y libgl1 libglib2.0-0 libsndfile1`, rồi chạy lại `uv run vbench model prepare --model <id>`. |
+| Log server có `Orchestrator did not become ready within 600s` | Đây là hệ quả, không phải nguyên nhân: một tiến trình con đã chết trước đó. Tìm dòng lỗi đầu tiên (thường là `ImportError` hoặc `CUDA out of memory`) ở phía trên trong cùng file log. |
 | `model serve` báo "server exited during startup" hoặc "not healthy" | Gửi `$VBENCH_HOME/logs/runtime_<model>.log` về. Với Qwen3-Omni trên 1 GPU, lỗi hết bộ nhớ là rủi ro đã biết (cấu hình `configs/deploy/qwen3_omni_1gpu.yaml` chưa được kiểm chứng). |
 | `model prepare` báo "disk budget exceeded" | Đĩa đã dùng gần 200 GB. Xoá model không cần nữa: `uv run vbench model evict --model <id>`. |
 | `model serve` báo "GPU is locked" | Một model khác đang chạy: `uv run vbench model stop --model <id đó>`. |

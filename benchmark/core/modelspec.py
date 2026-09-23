@@ -76,6 +76,17 @@ class ModelSpec(_Strict):
     notes: list[str] = Field(default_factory=list)
 
 
+class PostInstallStep(_Strict):
+    """A ``uv`` command run after the packages are installed.
+
+    ``{python}`` in an argument is replaced by the venv interpreter path.
+    """
+
+    args: list[str] = Field(min_length=1)
+    ignore_failure: bool = False
+    why: str = ""
+
+
 class RuntimeSpec(_Strict):
     """A shared Python environment for one serving stack (e.g. vLLM-Omni 0.28.0)."""
 
@@ -83,6 +94,8 @@ class RuntimeSpec(_Strict):
     python: str
     packages: list[str] = Field(min_length=1)  # exact pins, installed in order
     torch_backend: str | None = "auto"
+    post_install: list[PostInstallStep] = Field(default_factory=list)
+    verify_imports: list[str] = Field(default_factory=list)  # checked inside the venv
     serve_command: list[str] = Field(min_length=1)  # executable relative to venv bin/
 
 
