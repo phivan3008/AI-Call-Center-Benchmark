@@ -37,6 +37,7 @@ class FakeChatConfig:
     text: str = "かしこまりました。"
     wav_container: bool = True  # audio chunks as WAV containers (else raw PCM16)
     emit_tool_call: bool = True  # when the request declares tools
+    prompted_tool_text: str | None = None  # text reply used for the prompted protocol
     status_code: int = 200
     error_body: str = '{"error": "bad request"}'
     audio_rate_hz: int = 24000
@@ -58,10 +59,21 @@ class FakeChatServer:
         if self.config.status_code >= 400:
             return httpx.Response(self.config.status_code, text=self.config.error_body)
         wants_tool = bool(body.get("tools")) and self.config.emit_tool_call
-        already_called = any(m.get("role") == "tool" for m in body.get("messages", []))
+        already_called = any(
+            m.get("role") == "tool"
+            or (m.get("role") == "user" and "ツールの実行結果" in str(m.get("content")))
+            for m in body.get("messages", [])
+        )
+        if self.config.prompted_tool_text is not None and not already_called:
+            return httpx.Response(200, content=self._stream_text(self.config.prompted_tool_text))
         return httpx.Response(
             200, content=self._stream(wants_tool and not already_called), headers={}
         )
+
+    async def _stream_text(self, text: str) -> AsyncIterator[bytes]:
+        chunk = {"choices": [{"delta": {"content": text}}]}
+        yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode()
+        yield b"data: [DONE]\n\n"
 
     async def _stream(self, with_tool: bool) -> AsyncIterator[bytes]:
         cfg = self.config

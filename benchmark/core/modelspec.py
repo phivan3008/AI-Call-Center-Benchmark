@@ -60,6 +60,10 @@ class ChatEndpoint(_Strict):
     output_sample_rate_hz: int = 24000
     request_timeout_s: float = 300.0
     auth_env: str | None = None
+    # native: OpenAI function calling (server needs --enable-auto-tool-choice and a
+    # --tool-call-parser). prompted: tools described in the system prompt, the model answers
+    # with one JSON object (ARCHITECTURE §6.3 fallback, tagged tool_mode=prompted).
+    tool_protocol: Literal["native", "prompted"] = "native"
 
 
 class LocalRuntime(_Strict):

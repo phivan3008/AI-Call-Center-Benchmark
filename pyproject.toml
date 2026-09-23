@@ -1,6 +1,6 @@
 [project]
 name = "ai-callcenter-benchmark"
-version = "0.3.0"
+version = "0.3.1"
 description = "Benchmark framework for native speech-to-speech models in Japanese AI call center deployment"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -45,6 +45,8 @@ extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "T20", "PTH"]
+# Japanese prompts legitimately use full-width punctuation.
+ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.mypy]
 # No python_version pin: numpy stubs use syntax of the running interpreter (3.12 in CI).

@@ -280,6 +280,7 @@ Cũng chấp nhận: báo cáo CSV/JSON/parquet/HTML, ảnh chụp màn hình, o
 | `model serve` báo "server exited during startup" hoặc "not healthy" | Gửi `$VBENCH_HOME/logs/runtime_<model>.log` về. Với Qwen3-Omni trên 1 GPU, lỗi hết bộ nhớ là rủi ro đã biết (cấu hình `configs/deploy/qwen3_omni_1gpu.yaml` chưa được kiểm chứng). |
 | `model prepare` báo "disk budget exceeded" | Đĩa đã dùng gần 200 GB. Xoá model không cần nữa: `uv run vbench model evict --model <id>`. |
 | `model serve` báo "GPU is locked" | Một model khác đang chạy: `uv run vbench model stop --model <id đó>`. |
+| Mẫu tool call báo `http_400` với `"auto" tool choice requires --enable-auto-tool-choice` | Server chưa bật tool parser. Từ v0.3.1, các model cục bộ dùng giao thức tool qua prompt (`tool_protocol: prompted`) nên không cần cờ này. Nếu muốn thử function calling gốc, thêm `--enable-auto-tool-choice --tool-call-parser <parser>` vào `serve_args` và đổi `tool_protocol: native`. |
 | `run` chạy xong nhưng mọi mẫu `error`, `capability_report.json` toàn `not_tested` | Xem `events.jsonl` của một mẫu để đọc event lỗi. Từ v0.3.0 các tác vụ theo lượt đi qua `/v1/chat/completions`; nếu server trả lỗi HTTP thì nội dung lỗi nằm trong event `error`. |
 | `run` báo "server is not healthy" | Chưa chạy `model serve`, hoặc server đã dừng: kiểm tra `uv run vbench model status --model <id>`. |
 | CUDA OOM khi nạp model | Kiểm tra không có process GPU nào khác (`nvidia-smi`); gửi `env_report.json` và log runtime. |

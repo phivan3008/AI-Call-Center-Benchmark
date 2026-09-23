@@ -26,6 +26,11 @@ chat:
   chat_template_kwargs: {use_tts_template: true}   # recipe: text + speech in one response
   input_sample_rate_hz: 16000
   output_sample_rate_hz: 24000
+  # Native function calling needs the server flags --enable-auto-tool-choice and
+  # --tool-call-parser <parser>; checkpoint 2 (2026-09-23) returned HTTP 400 without them
+  # and no parser is known to match this model. Use the documented prompted-JSON
+  # fallback (ARCHITECTURE 6.3), tagged tool_mode=prompted in results.
+  tool_protocol: prompted
 realtime:
   dialect: vllm_omni
   url: ws://127.0.0.1:18002/v1/realtime?duplex=1   # duplex handler, used from Phase 6

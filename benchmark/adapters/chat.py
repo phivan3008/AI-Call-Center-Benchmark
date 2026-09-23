@@ -22,7 +22,7 @@ import base64
 import contextlib
 import json
 import os
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any
 
 import httpx
@@ -40,6 +40,7 @@ from benchmark.adapters.base import (
     SpeechSession,
     TextDelta,
     ToolCall,
+    ToolSpec,
 )
 from benchmark.audio.pcm import read_wav_bytes, resample_pcm16, wav_bytes
 from benchmark.core.logging import get_logger
@@ -68,6 +69,58 @@ def decode_audio_delta(payload: str, default_rate_hz: int) -> tuple[bytes, int]:
     return raw, default_rate_hz
 
 
+PROMPTED_TOOL_INSTRUCTIONS = (
+    "\n\n# ツール利用\n"
+    "次のツールが使えます。ツールを使う場合は、返答の代わりに次の形式の JSON だけを"
+    "1行で出力してください（前後に他の文字を書かないこと）:\n"
+    '{{"tool": "<ツール名>", "arguments": {{...}}}}\n'
+    "ツールの実行結果を受け取ったら、その内容に基づいて通常の返答をしてください。\n"
+    "利用可能なツール:\n{tools}"
+)
+
+
+def prompted_tool_block(tools: Sequence[ToolSpec]) -> str:
+    """System-prompt block describing the tools for the prompted protocol."""
+    lines = [
+        f"- {tool.name}: {tool.description}\n  parameters: "
+        + json.dumps(tool.parameters, ensure_ascii=False)
+        for tool in tools
+    ]
+    return PROMPTED_TOOL_INSTRUCTIONS.format(tools="\n".join(lines))
+
+
+def parse_prompted_tool_call(text: str, tools: Sequence[ToolSpec]) -> tuple[str, str] | None:
+    """Find a ``{"tool": ..., "arguments": {...}}`` object in the model's text.
+
+    Returns ``(name, arguments_json)``; the name is returned even when it is not a declared
+    tool, so that hallucinated tool names stay visible in the results.
+    """
+    known = {tool.name for tool in tools}
+    for start, char in enumerate(text):
+        if char != "{":
+            continue
+        depth = 0
+        for end in range(start, len(text)):
+            if text[end] == "{":
+                depth += 1
+            elif text[end] == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        data = json.loads(text[start : end + 1])
+                    except ValueError:
+                        break
+                    if isinstance(data, dict) and isinstance(data.get("tool"), str):
+                        arguments = data.get("arguments", {})
+                        if data["tool"] in known or known:
+                            return str(data["tool"]), json.dumps(
+                                arguments if isinstance(arguments, dict) else {},
+                                ensure_ascii=False,
+                            )
+                    break
+    return None
+
+
 class ChatSession:
     def __init__(
         self,
@@ -83,10 +136,14 @@ class ChatSession:
         self._queue: asyncio.Queue[_Event | None] = asyncio.Queue()
         self._input = bytearray()
         self._input_rate = endpoint.input_sample_rate_hz
+        self._prompted_tools = bool(cfg.tools) and endpoint.tool_protocol == "prompted"
         self._messages: list[dict[str, Any]] = []
-        if cfg.system_prompt:
+        system_prompt = cfg.system_prompt
+        if self._prompted_tools:
+            system_prompt += prompted_tool_block(cfg.tools)
+        if system_prompt:
             self._messages.append(
-                {"role": "system", "content": [{"type": "text", "text": cfg.system_prompt}]}
+                {"role": "system", "content": [{"type": "text", "text": system_prompt}]}
             )
         self._task: asyncio.Task[None] | None = None
         self._response_seq = 0
@@ -122,13 +179,18 @@ class ChatSession:
             await self._queue.put(ResponseCancelled(response_id=self._response_id))
 
     async def send_tool_result(self, call_id: str, result: dict[str, Any]) -> None:
-        self._messages.append(
-            {
-                "role": "tool",
-                "tool_call_id": call_id,
-                "content": json.dumps(result, ensure_ascii=False),
-            }
-        )
+        payload = json.dumps(result, ensure_ascii=False)
+        if self._prompted_tools:
+            self._messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": f"ツールの実行結果: {payload}"},
+                    ],
+                }
+            )
+        else:
+            self._messages.append({"role": "tool", "tool_call_id": call_id, "content": payload})
         self._start()
 
     def events(self) -> AsyncIterator[_Event]:
@@ -170,7 +232,7 @@ class ChatSession:
         }
         if self._endpoint.chat_template_kwargs:
             body["chat_template_kwargs"] = dict(self._endpoint.chat_template_kwargs)
-        if self._cfg.tools:
+        if self._cfg.tools and not self._prompted_tools:
             body["tools"] = [
                 {"type": "function", "function": tool.model_dump()} for tool in self._cfg.tools
             ]
@@ -222,6 +284,22 @@ class ChatSession:
                 )
             )
             return
+
+        if self._prompted_tools and not tool_calls:
+            parsed = parse_prompted_tool_call("".join(assistant_text), self._cfg.tools)
+            if parsed is not None:
+                name, arguments = parsed
+                self._messages.append({"role": "assistant", "content": "".join(assistant_text)})
+                await self._queue.put(
+                    ToolCall(
+                        response_id=response_id,
+                        call_id=f"{response_id}-c0",
+                        name=name,
+                        arguments_json=arguments,
+                    )
+                )
+                await self._queue.put(ResponseDone(response_id=response_id, usage=usage))
+                return
 
         if tool_calls:
             self._messages.append(
@@ -303,10 +381,15 @@ class ChatAdapter:
         def status(cap: Capability) -> CapabilityStatus:
             return cap.verified if cap.verified is not CapabilityStatus.UNKNOWN else cap.claimed
 
+        native_tools = (
+            CapabilityStatus.UNSUPPORTED
+            if self.endpoint.tool_protocol == "prompted"
+            else status(caps.native_tool_calling)
+        )
         self.capabilities = ModelCapabilities(
             native_full_duplex=CapabilityStatus.UNSUPPORTED,  # turn mode by construction
             streaming_audio_output=status(caps.streaming_audio_output),
-            native_tool_calling=status(caps.native_tool_calling),
+            native_tool_calling=native_tools,
             text_output_channel=status(caps.text_output_channel),
             input_sample_rate_hz=self.endpoint.input_sample_rate_hz,
             output_sample_rate_hz=self.endpoint.output_sample_rate_hz,

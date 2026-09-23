@@ -218,3 +218,59 @@ async def test_runner_smoke_over_chat_transport(settings: Settings) -> None:
     assert observations["native_tool_calling"]["observation"] == "observed"
     assert observations["response_cancel"]["observation"] == "observed"
     assert (run_dir / "L1" / "turn_0" / "output.wav").is_file()
+
+
+async def test_prompted_tool_protocol() -> None:
+    """Fallback for servers without --tool-call-parser: tools described in the prompt."""
+    tool_json = '{"tool": "record_request", "arguments": {"summary": "予約の依頼"}}'
+    server = FakeChatServer(FakeChatConfig(prompted_tool_text=tool_json))
+    adapter = ChatAdapter(_spec(tool_protocol="prompted"), client=server.client())
+    assert adapter.capabilities.native_tool_calling.value == "unsupported"
+
+    session = await adapter.open_session(
+        SessionConfig(session_id="s", system_prompt="指示", tools=[TOOL])
+    )
+    await session.commit_input()
+    events = []
+    async for event in session.events():
+        events.append(event)
+        if event.type == "response_done":
+            break
+    call = next(e for e in events if e.type == "tool_call")
+    assert call.name == "record_request"  # type: ignore[union-attr]
+    assert json.loads(call.arguments_json) == {"summary": "予約の依頼"}  # type: ignore[union-attr]
+
+    await session.send_tool_result(call.call_id, {"status": "recorded"})  # type: ignore[union-attr]
+    assert (await _drain(session))[-1] == "response_done"
+    await session.close()
+
+    first = server.requests[0]
+    assert "tools" not in first  # never sent to the server in prompted mode
+    system_text = first["messages"][0]["content"][0]["text"]
+    assert "record_request" in system_text
+    assert '{"tool":' in system_text.replace(" ", "")
+    follow_up = server.requests[1]["messages"][-1]
+    assert follow_up["role"] == "user"
+    assert "ツールの実行結果" in follow_up["content"][0]["text"]
+
+
+def test_parse_prompted_tool_call() -> None:
+    from benchmark.adapters.chat import parse_prompted_tool_call
+
+    tools = [TOOL]
+    assert parse_prompted_tool_call('{"tool": "record_request", "arguments": {"a": 1}}', tools) == (
+        "record_request",
+        '{"a": 1}',
+    )
+    # Embedded in surrounding text, with nested objects.
+    embedded = 'はい。{"tool": "record_request", "arguments": {"x": {"y": 2}}} です'
+    assert parse_prompted_tool_call(embedded, tools) == ("record_request", '{"x": {"y": 2}}')
+    # A hallucinated tool name is still reported, so evaluators can count it.
+    assert parse_prompted_tool_call('{"tool": "unknown_tool", "arguments": {}}', tools) == (
+        "unknown_tool",
+        "{}",
+    )
+    assert parse_prompted_tool_call("ご用件をお伺いします。", tools) is None
+    assert parse_prompted_tool_call('{"tool": ', tools) is None
+    assert parse_prompted_tool_call('{"no_tool_key": 1}', tools) is None
+    assert parse_prompted_tool_call('{"tool": "record_request"}', tools) == ("record_request", "{}")

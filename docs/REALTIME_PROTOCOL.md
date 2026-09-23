@@ -40,6 +40,15 @@ Request (vLLM-Omni):
 
 Mỗi chunk SSE có `modality` ở cấp cao nhất; khi `modality == "audio"` thì `choices[].delta.content` là base64 của audio (WAV hoặc PCM16 thô, adapter xử lý cả hai), ngược lại là text. Tool call theo chuẩn OpenAI (`choices[].delta.tool_calls`), kết quả tool gửi lại bằng message `role: tool`.
 
+**Tool calling.** Có hai chế độ, đặt bằng `chat.tool_protocol` trong cấu hình model:
+
+| Chế độ | Cách làm | Khi nào dùng |
+|---|---|---|
+| `native` | Gửi `tools` + `tool_choice: auto` theo chuẩn OpenAI | Server đã bật `--enable-auto-tool-choice` và `--tool-call-parser <parser>` |
+| `prompted` | Mô tả tool trong system prompt, model trả về đúng một object JSON `{"tool": ..., "arguments": {...}}`; harness tự parse và gửi kết quả tool lại bằng một message người dùng | Server chưa có parser phù hợp (checkpoint 2: MiniCPM-o trả HTTP 400 với `tool_choice: auto`) |
+
+Kết quả luôn được gắn tag `tool_mode` để không trộn hai chế độ khi so sánh. Tên tool do model bịa ra vẫn được ghi lại, để đánh giá được tỷ lệ gọi tool ảo.
+
 Huỷ phản hồi = đóng luồng HTTP; server dừng sinh. Đây là "huỷ kiểu orchestrated", được gắn tag như vậy trong kết quả.
 
 Cài đặt: `benchmark/adapters/chat.py`; server giả lập để test: `benchmark/testing/fake_chat.py`.
