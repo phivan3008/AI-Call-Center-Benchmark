@@ -94,6 +94,9 @@ class RuntimeSpec(_Strict):
     python: str
     packages: list[str] = Field(min_length=1)  # exact pins, installed in order
     torch_backend: str | None = "auto"
+    # Installed after the core packages, pinned by a constraints file built from the
+    # already-installed set so they cannot move torch/vllm versions.
+    extra_packages: list[str] = Field(default_factory=list)
     post_install: list[PostInstallStep] = Field(default_factory=list)
     verify_imports: list[str] = Field(default_factory=list)  # checked inside the venv
     serve_command: list[str] = Field(min_length=1)  # executable relative to venv bin/

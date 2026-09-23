@@ -214,8 +214,8 @@ def test_model_check_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     )
     result = runner.invoke(app, ["model", "check", "--model", "minicpm-o-4_5"])
     assert result.exit_code == 0, result.output
-    assert calls == [["vllm", "vllm_omni", "cv2", "soundfile"]]
-    assert "ok: vllm, vllm_omni, cv2, soundfile" in result.stdout
+    assert calls == [["vllm", "vllm_omni", "cv2", "soundfile", "s3tokenizer", "stepaudio2"]]
+    assert "ok: vllm, vllm_omni, cv2, soundfile, s3tokenizer, stepaudio2" in result.stdout
 
     def boom(*args: Any, **kwargs: Any) -> None:
         raise cli.manager.RuntimeError_("cannot import 'cv2'. install libgl1")

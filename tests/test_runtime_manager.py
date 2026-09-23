@@ -86,7 +86,19 @@ def test_prepare_writes_report(
     reinstall = next(c for c in runner.calls if "--reinstall-package" in c)
     assert reinstall[-1] == "opencv-python-headless>=4.13"
     imported = [c[2].removeprefix("import ") for c in runner.calls if c[1:2] == ["-c"]]
-    assert imported[-4:] == ["vllm", "vllm_omni", "cv2", "soundfile"]
+    assert imported[-6:] == [
+        "vllm",
+        "vllm_omni",
+        "cv2",
+        "soundfile",
+        "s3tokenizer",
+        "stepaudio2",
+    ]
+    # MiniCPM-o Token2Wav extras are installed with a constraints file so that they cannot
+    # move the torch / vllm versions that were just installed.
+    extras = next(c for c in runner.calls if "--constraints" in c)
+    assert extras[-1] == "stepaudio2-minicpmo==0.1.1"
+    assert Path(extras[extras.index("--constraints") + 1]).read_text().startswith("vllm==")
     assert manager.load_prepare_report(settings, spec) == report
 
 

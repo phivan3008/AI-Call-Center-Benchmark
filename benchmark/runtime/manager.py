@@ -182,6 +182,26 @@ def prepare(
         ).strip()
         or "{}"
     )
+    if runtime.extra_packages:
+        constraints = paths.venv.parent / "constraints.txt"
+        constraints.parent.mkdir(parents=True, exist_ok=True)
+        constraints.write_text(
+            _run([uv, "pip", "freeze", "--python", str(paths.python)], runner), encoding="utf-8"
+        )
+        _run(
+            [
+                uv,
+                "pip",
+                "install",
+                "--python",
+                str(paths.python),
+                "--constraints",
+                str(constraints),
+                *runtime.extra_packages,
+            ],
+            runner,
+        )
+
     for step in runtime.post_install:
         args = [arg.format(python=str(paths.python)) for arg in step.args]
         try:

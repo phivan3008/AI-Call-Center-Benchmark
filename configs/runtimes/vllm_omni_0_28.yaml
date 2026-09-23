@@ -8,6 +8,18 @@ packages:
   - vllm-omni==0.28.0
 torch_backend: auto
 
+# MiniCPM-o 4.5 stage 2 (Token2Wav) imports s3tokenizer / stepaudio2, which vLLM-Omni does
+# not install by default (checkpoint 2, 2026-09-23: ModuleNotFoundError: No module named
+# 's3tokenizer'). The recipe requires the MiniCPM-o flavoured vocoder package:
+# https://github.com/vllm-project/vllm-omni/blob/v0.28.0/recipes/OpenBMB/MiniCPM-o-4_5.md
+# ("Stage 2 loads Token2wav from ... PyPI package stepaudio2-minicpmo").
+# Installed with a constraints file built from the already-installed packages so it cannot
+# move torch / transformers / vllm versions.
+# NOTE for Phase 9: the upstream `step-audio2` package (needed for StepAudio 2.5) conflicts
+# with this one, so StepAudio 2.5 will need its own runtime_id / venv.
+extra_packages:
+  - stepaudio2-minicpmo==0.1.1
+
 # vLLM-Omni worker subprocesses import cv2. vLLM pulls opencv-python-headless while other
 # dependencies pull the GUI build opencv-python, which needs libGL.so.1. Both ship the same
 # `cv2` package directory, so uninstalling one deletes the files of the other and leaves
@@ -24,8 +36,8 @@ post_install:
       [pip, install, --python, "{python}", --reinstall-package, opencv-python-headless,
        "opencv-python-headless>=4.13"]
 
-# Imported inside the venv at prepare time: a missing system library or a broken OpenCV
-# install must fail here, not as an orchestrator start-up timeout ten minutes into serve.
-verify_imports: [vllm, vllm_omni, cv2, soundfile]
+# Imported inside the venv at prepare time: a missing dependency or system library must fail
+# here, not as an orchestrator start-up timeout ten minutes into `vbench model serve`.
+verify_imports: [vllm, vllm_omni, cv2, soundfile, s3tokenizer, stepaudio2]
 
 serve_command: [vllm, serve]
