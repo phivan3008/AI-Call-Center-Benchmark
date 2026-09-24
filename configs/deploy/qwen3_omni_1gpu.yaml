@@ -1,12 +1,20 @@
 # Overlay on vllm_omni/deploy/qwen3_omni_moe.yaml (v0.28.0): put all three stages on GPU 0.
 # The upstream config is verified on 2x H100 (stage 0 on cuda:0, stages 1+2 on cuda:1).
-# These memory fractions are an UNVERIFIED starting point: BF16 weights total ~70.5 GB
-# (HF file sizes), so KV-cache headroom is small. The smoke run measures whether it loads;
-# adjust here (or with --stage-overrides) based on the runtime log, never by guessing results.
+#
+# Measured on the benchmark server (checkpoint 2, 2026-09-24, H100 80GB):
+#   - stage 0 (thinker) weights: 59.26 GiB
+#   - with gpu_memory_utilization 0.78 only 1.05 GiB was left for the KV cache
+#   - the default max_model_len 65536 needs 6.0 GiB of KV cache -> start-up failed
+#
+# Fix: cap stage 0 context at 8192 tokens (KV need scales linearly: 6.0 GiB * 8192/65536
+# = 0.75 GiB) and give stage 0 slightly more of the GPU. 8192 tokens is ample for Layer 1/3
+# turn tasks (a 10 s Japanese utterance is a few hundred audio tokens); raise it again when
+# long-context tests need more, or move to an FP8 thinker checkpoint, which frees ~30 GiB.
 stages:
   - stage_id: 0          # thinker
     devices: "0"
-    gpu_memory_utilization: 0.78
+    gpu_memory_utilization: 0.82
+    max_model_len: 8192
     max_num_seqs: 4
     max_num_batched_tokens: 8192
   - stage_id: 1          # talker
@@ -16,5 +24,5 @@ stages:
     max_num_batched_tokens: 8192
   - stage_id: 2          # code2wav
     devices: "0"
-    gpu_memory_utilization: 0.06
+    gpu_memory_utilization: 0.05
     max_num_seqs: 4
